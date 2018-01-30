@@ -122,6 +122,8 @@ while not len(all_urls) == 0:
         content = re.sub(r'<span class="mw-headline" id=(.*)</span>', rep_method, content)
         # 替换图片格式为jpg
         content = content.replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
+        # unquote一下内容，使图片文件名缩短
+        content = urllib.parse.unquote(content)
 
     # 如果链接不在列表里面就加入列表中
     all_links_source = soup.find_all(href=True, title=True)
@@ -173,7 +175,6 @@ start_time = time.time()
 for img in imgs:
 
     # 一堆调试信息
-    print('now          :', img)
     print('now_unquoted :', urllib.parse.unquote(img))
     print('num          :', num)
     if num>1:
@@ -206,10 +207,16 @@ for img in imgs:
 
     # 处理文件路径
     img_rear_path = img.replace(upload,'upload').replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
+    # 处理图片路径，确保不会太长
+    img_rear_path = urllib.parse.unquote(img_rear_path)
     img_path = os.path.join(os.path.abspath('.'),img_rear_path)
     img_dir , img_name = os.path.split(img_path)
     if not os.path.exists(img_dir):
-        os.makedirs(img_dir)
+        try:
+            os.makedirs(img_dir)
+        except OSError:
+            print('文件名太长，跳过')
+            continue
 
     #以一定的质量保存图片，默认50以节省空间
     img_RGB.save(img_path, quality = image_quality)

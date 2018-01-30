@@ -10,11 +10,11 @@ from imgs import imgs_list
 
 upload = '//upload.thwiki.cc'
 quality = 50
-num = 0
 start_time = time.time()
+starts_from = int(input('starts from?: '))
+num = starts_from
 
-for img in imgs_list:
-    print('now          :', img)
+for img in imgs_list[starts_from:]:
     print('now_unquoted :', urllib.parse.unquote(img))
     print('num          :', num)
     if num>1:
@@ -46,11 +46,16 @@ for img in imgs_list:
 
 
     img_rear_path = img.replace(upload,'upload').replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
+    img_rear_path = urllib.parse.unquote(img_rear_path)
     img_path = os.path.join(os.path.abspath('.'),img_rear_path)
     img_dir , img_name = os.path.split(img_path)
 
     if not os.path.exists(img_dir):
-        os.makedirs(img_dir)
+        try:
+            os.makedirs(img_dir)
+        except OSError:
+            print('文件名太长，跳过')
+            continue
 
     img_RGB.save(img_path,quality = quality)
     num += 1
