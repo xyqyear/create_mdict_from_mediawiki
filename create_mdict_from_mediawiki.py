@@ -30,7 +30,7 @@ keys = []
 redirects = {}                        #文件
 url_except = ['http','www','/index.','/%E6%96%87%E4%BB%B6:','/File:',
               #用户                  #模板
-              '/%E7%94%A8%E6%88%B7:','/%E6%A8%A1%E6%9D%BF:','/Sample:']
+              '/%E7%94%A8%E6%88%B7:','/%E6%A8%A1%E6%9D%BF:','/Template:']
 imgs = []
 start_time = time.time()
 
@@ -136,6 +136,10 @@ while not len(all_urls) == 0:
                 break
         if if_del:
             continue
+
+        if '页面不存在' in link['title']:
+            continue
+
         full_link = site + re.sub('#.*$','',link['href'])
         if full_link not in urls_known:
             all_urls.append(full_link)
@@ -188,7 +192,12 @@ for img in imgs:
     print('####################')
 
     #链接的全路径
-    full_img_network_path = 'https:' + img
+    if img.startswith('http'):
+        full_img_network_path = img
+    elif img.startswith('//'):
+        full_img_network_path = 'https:' + img
+    else:
+        full_img_network_path = 'https://' + img
 
     # 超时或者404,403等就放弃
     try:
@@ -202,8 +211,13 @@ for img in imgs:
         continue
 
     # 打开图片，并且处理图片为RGB模式，省空间
-    img_object = Image.open(io.BytesIO(img_requests.content))
-    img_RGB = img_object.convert('RGB')
+    # 不清楚为什么这里也会出错，不过姑且先加一个try吧
+    try:
+        img_object = Image.open(io.BytesIO(img_requests.content))
+        img_RGB = img_object.convert('RGB')
+    except:
+        print(sys.exc_info()[0])
+        continue
 
     # 处理文件路径
     img_rear_path = img.replace(upload,'upload').replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
@@ -218,6 +232,11 @@ for img in imgs:
             print('文件名太长，跳过')
             continue
 
-    #以一定的质量保存图片，默认50以节省空间
-    img_RGB.save(img_path, quality = image_quality)
+    # 以一定的质量保存图片，默认50以节省空间
+    # 似乎总是喜欢出点错,干脆一个try解决 (/////)
+    try:
+        img_RGB.save(img_path, quality=image_quality)
+    except:
+        print(sys.exc_info()[0])
+        continue
     num += 1

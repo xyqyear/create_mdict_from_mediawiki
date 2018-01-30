@@ -27,12 +27,17 @@ for img in imgs_list[starts_from:]:
         print('time_left    :','%s:%s'% (hours_left, minutes_left))
     print('####################')
 
-
-    full_img_name = 'https:' + img
+    # 链接的全路径
+    if img.startswith('http'):
+        full_img_network_path = img
+    elif img.startswith('//'):
+        full_img_network_path = 'https:' + img
+    else:
+        full_img_network_path = 'https://' + img
 
     # 超时或者404,403等就放弃
     try:
-        img_requests = requests.get(full_img_name,timeout=60)
+        img_requests = requests.get(full_img_network_path,timeout=60)
         if not img_requests.ok:
             continue
     except TimeoutError:
@@ -41,9 +46,13 @@ for img in imgs_list[starts_from:]:
         print('Unexpected error:',sys.exc_info()[0])
         continue
 
-    img_object = Image.open(io.BytesIO(img_requests.content))
-    img_RGB = img_object.convert('RGB')
-
+    # 不清楚为什么这里也会出错，不过姑且先加一个try吧
+    try:
+        img_object = Image.open(io.BytesIO(img_requests.content))
+        img_RGB = img_object.convert('RGB')
+    except:
+        print(sys.exc_info()[0])
+        continue
 
     img_rear_path = img.replace(upload,'upload').replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
     img_rear_path = urllib.parse.unquote(img_rear_path)
@@ -57,7 +66,13 @@ for img in imgs_list[starts_from:]:
             print('文件名太长，跳过')
             continue
 
-    img_RGB.save(img_path,quality = quality)
+    # 似乎总是喜欢出点错,干脆一个try解决 (/////)
+    try:
+        img_RGB.save(img_path,quality = quality)
+    except:
+        print(sys.exc_info()[0])
+        continue
+
     num += 1
 
 
