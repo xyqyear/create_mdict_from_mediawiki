@@ -115,15 +115,15 @@ while not len(all_urls) == 0:
     for link in links:
         # 替换链接为本地key
         content = content.replace('href="' + link['href'], 'href="' + 'entry://%s' % link['title'])
-        # 替换图片upload为本地路径
-        content = content.replace('src="%s/'% upload,'src="/')
-        # 替换词条内跳转为mdict格式
-        content = content.replace('href="#','href="entry://#')
-        content = re.sub(r'<span class="mw-headline" id=(.*)</span>', rep_method, content)
-        # 替换图片格式为jpg
-        content = content.replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
-        # unquote一下内容，使图片文件名缩短
-        content = urllib.parse.unquote(content)
+    # 替换图片upload为本地路径
+    content = content.replace('src="%s/'% upload,'src="/')
+    # 替换词条内跳转为mdict格式
+    content = content.replace('href="#','href="entry://#')
+    content = re.sub(r'<span class="mw-headline" id=(.*)</span>', rep_method, content)
+    # 替换图片格式为jpg
+    content = content.replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
+    # unquote一下内容，使图片文件名缩短
+    content = urllib.parse.unquote(content)
 
     # 如果链接不在列表里面就加入列表中
     all_links_source = soup.find_all(href=True, title=True)
@@ -146,7 +146,7 @@ while not len(all_urls) == 0:
     num += 1
 
     # Test
-    #if num == 20:
+    #if num == 40:
     #    break
 
 with open('imgs.py', 'w') as i:
