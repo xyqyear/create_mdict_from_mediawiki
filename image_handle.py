@@ -1,3 +1,5 @@
+# -*- coding:utf-8 -*-
+
 from PIL import Image
 import io
 import requests
@@ -27,6 +29,28 @@ for img in imgs_list[starts_from:]:
         print('time_left    :','%s:%s'% (hours_left, minutes_left))
     print('####################')
 
+    # 如果图片不是upload就跳过
+    if not img.startswith(upload):
+        print('跳过，以为不是此wiki upload图片')
+        continue
+    # 处理文件路径
+    img_rear_path = img.replace('.png', '.jpg').replace('.gif', '.jpg').replace('.jpeg', '.jpg')
+    if upload is not '':
+        img_rear_path = img_rear_path.replace(upload, 'upload')
+    img_rear_path = urllib.parse.unquote(img_rear_path)
+    img_path = os.path.join(os.path.abspath('.'),img_rear_path)
+    if os.path.exists(img_path):
+        print('文件已存在，跳过')
+        continue
+    img_dir , img_name = os.path.split(img_path)
+    # 创建文件夹
+    if not os.path.exists(img_dir):
+        try:
+            os.makedirs(img_dir)
+        except OSError:
+            print('创建文件夹有点问题，跳过')
+            continue
+
     # 链接的全路径
     if img.startswith('http'):
         full_img_network_path = img
@@ -53,18 +77,6 @@ for img in imgs_list[starts_from:]:
     except:
         print(sys.exc_info()[0])
         continue
-
-    img_rear_path = img.replace(upload,'upload').replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
-    img_rear_path = urllib.parse.unquote(img_rear_path)
-    img_path = os.path.join(os.path.abspath('.'),img_rear_path)
-    img_dir , img_name = os.path.split(img_path)
-
-    if not os.path.exists(img_dir):
-        try:
-            os.makedirs(img_dir)
-        except OSError:
-            print('文件名太长，跳过')
-            continue
 
     # 似乎总是喜欢出点错,干脆一个try解决 (/////)
     try:

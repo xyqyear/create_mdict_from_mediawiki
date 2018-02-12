@@ -153,8 +153,8 @@ while not len(all_urls) == 0:
     #if num == 40:
     #    break
 
-with open('imgs.py', 'w') as i:
-    i.write('imgs=' + str(imgs))
+with open('imgs.py', 'w', errors='ignore') as i:
+    i.write('# -*- coding: gbk -*- \nimgs_list=' + str(imgs))
 
 # 处理重定向
 nums = 1
@@ -188,8 +188,24 @@ for img in imgs:
         seconds_left = (len(imgs)-num) * average_time
         hours_left = int(seconds_left // 3600)
         minutes_left = int(seconds_left % 3600 // 60)
-        print('time_left    :','%s:%s'% (hours_left, minutes_left))
+        print('time_left    :','{}:{}'.format(hours_left, minutes_left))
     print('####################')
+
+    # 处理文件路径
+    img_rear_path = img.replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
+    if upload is not '':
+        img_rear_path = img_rear_path.replace(upload,'upload')
+    # 处理图片路径，确保不会太长
+    img_rear_path = urllib.parse.unquote(img_rear_path)
+    img_path = os.path.join(os.path.abspath('.'),img_rear_path)
+    img_dir , img_name = os.path.split(img_path)
+
+    if not os.path.exists(img_dir):
+        try:
+            os.makedirs(img_dir)
+        except OSError:
+            print('创建文件夹有点问题，跳过')
+            continue
 
     #链接的全路径
     if img.startswith('http'):
@@ -204,9 +220,7 @@ for img in imgs:
         img_requests = requests.get(full_img_network_path, timeout=60)
         if not img_requests.ok:
             continue
-    except TimeoutError:
-        continue
-    except :
+    except:
         print('Unexpected error:',sys.exc_info()[0])
         continue
 
@@ -218,19 +232,6 @@ for img in imgs:
     except:
         print(sys.exc_info()[0])
         continue
-
-    # 处理文件路径
-    img_rear_path = img.replace(upload,'upload').replace('.png','.jpg').replace('.gif','.jpg').replace('.jpeg','.jpg')
-    # 处理图片路径，确保不会太长
-    img_rear_path = urllib.parse.unquote(img_rear_path)
-    img_path = os.path.join(os.path.abspath('.'),img_rear_path)
-    img_dir , img_name = os.path.split(img_path)
-    if not os.path.exists(img_dir):
-        try:
-            os.makedirs(img_dir)
-        except OSError:
-            print('文件名太长，跳过')
-            continue
 
     # 以一定的质量保存图片，默认50以节省空间
     # 似乎总是喜欢出点错,干脆一个try解决 (/////)
