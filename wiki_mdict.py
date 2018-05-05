@@ -98,7 +98,7 @@ def get_content_from_db(content_id):
 def get_image_url_from_db(image_id):
     image_tuple = [
         c for c in sqlite_connection.execute(
-            'SELECT url FROM content WHERE id == (?)',
+            'SELECT url FROM images WHERE id == (?)',
             [image_id]
         )][0]
 
