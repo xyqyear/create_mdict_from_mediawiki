@@ -312,14 +312,15 @@ def download_image(site, quality):
         # unquote一下防止文件名过长
         img_file_rear_path = urllib.parse.unquote(img_file_rear_path)
 
-        img_file_path = os.path.join(
-            os.path.abspath('.'), 'upload', img_file_rear_path)
         # 处理一下文件路径
-        img_file_path = handle_file_name(img_file_path)
-        img_file_path = img_file_path \
+        img_file_rear_path = handle_file_name(img_file_rear_path)
+        img_file_rear_path = img_file_rear_path \
             .replace('.png', '.jpg') \
             .replace('.gif', '.jpg') \
             .replace('.jpeg', '.jpg')
+
+        img_file_path = os.path.join(
+            os.path.abspath('.'), 'upload', img_file_rear_path)
 
         img_forth_path, img_name = os.path.split(img_file_path)
 
