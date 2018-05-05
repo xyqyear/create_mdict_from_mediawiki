@@ -120,9 +120,9 @@ def get_the_last_id_from_table(table):
 # 用于获得所有页面
 # 已经完工，估计没有什么bug
 class AllPagesGetter:
-    def __init__(self, site, all_pages_page):
-        self.site = site
-        self.all_pages_page = all_pages_page
+    def __init__(self, main_site, all_pages_page_):
+        self.site = main_site
+        self.all_pages_page = all_pages_page_
         self.all_pages = list()
         self.pages = 0
 
@@ -167,7 +167,6 @@ class AllPagesGetter:
                            '已经抓取{}个词条'.format(len(self.all_pages))]),
                ' | '.join([nav_urls[0]]))
 
-        next_page_url = None
         # 如果导航栏的链接只有一个(也就是只有上一页或者下一页)而且当前页面不是初始页面
         # 这样就能保证是最后一页
         if len(nav_urls) == 1 and list_page is not self.all_pages_page:
@@ -177,8 +176,8 @@ class AllPagesGetter:
             next_page_url = nav_urls[-1]
 
         # Test
-        if self.pages > 0:
-           return
+        #if self.pages > 0:
+        #   return
 
         # 这里使用一个迭代要方便些
         self.get_pages_from_list(next_page_url)
@@ -186,8 +185,8 @@ class AllPagesGetter:
 
 # 差不多已经完工
 class PageHandler:
-    def __init__(self, all_pages):
-        self.all_pages = all_pages
+    def __init__(self, all_pages_list):
+        self.all_pages = all_pages_list
         # [标题:处理好的内容源码,...]
 
     @staticmethod
@@ -277,11 +276,11 @@ class PageHandler:
                         self.all_pages) - i), 'no debug info')
             i += 1
             # Test
-            if i == 200:
-               break
+            #if i == 200:
+            #   break
 
 
-def download_image(site, quality):
+def download_image(main_site, quality):
     image_the_last_id = get_the_last_id_from_table('images')
     for i in range(1, image_the_last_id+1):
 
@@ -296,7 +295,7 @@ def download_image(site, quality):
             img_url = 'http:' + img_original_url
 
         elif img_original_url.startswith('/'):
-            img_url = site + img_original_url
+            img_url = main_site + img_original_url
 
         # 如果这三种情况都不是的话就跳过这张图片
         else:
