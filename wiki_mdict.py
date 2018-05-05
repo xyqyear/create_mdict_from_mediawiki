@@ -45,51 +45,79 @@ def handle_file_name(string, mode=0):
             .replace(':', '_').replace('?', '_').replace('*', '_')
 
 
+# 用于在表中插入内容
 def insert_content(content_list):
     # 获取上一个数据的id并插入数据
-    last_id_list = [
-        id_ for id_ in sqlite_connection.execute(
-            'SELECT id FROM content ORDER BY id DESC LIMIT 1'
-        )]
-    if len(last_id_list)==0:
-        last_id = 0
-    else:
-        last_id = last_id_list[0][0]
+    last_id = get_the_last_id_from_table('content')
 
+    # Test
+    print(content_list)
     sqlite_connection.execute(
-        'INSERT INTO content(id, title, content) values({id}, "{title}", "{content}")'\
-        .format(id=last_id+1, title=content_list[0], content=content_list[1])
+        'INSERT INTO content(id, title, content) values(?,?,?)',
+        [last_id+1, content_list[0], content_list[1]]
     )
 
     sqlite_connection.commit()
 
 
+# 用于在表中插入图片链接
 def insert_img(image_url):
     # 判断链接是否存在于images表中
     select_list = [
         url for url in sqlite_connection.execute(
-            'SELECT * FROM images WHERE url in ({})'\
-            .format(image_url)
+            'SELECT * FROM images WHERE url in (?)',
+            [image_url]
     )]
     if len(select_list) > 0:
         return
 
     # 获取上一个数据的id并插入数据
-    last_id_list = [
-        id_ for id_ in sqlite_connection.execute(
-            'SELECT id FROM images ORDER BY id DESC LIMIT 1'
-        )]
-    if len(last_id_list)==0:
-        last_id = 0
-    else:
-        last_id = last_id_list[0][0]
+    last_id = get_the_last_id_from_table('images')
 
     sqlite_connection.execute(
-        'INSERT INTO images(id, url) values({id}, "{url}")'\
-        .format(id=last_id+1, url=image_url)
+        'INSERT INTO images(id, url) values(?,?)',
+        [last_id+1, image_url]
     )
 
     sqlite_connection.commit()
+
+
+# 从数据库中获取内容
+# 返回(title, content)形式的元组
+def get_content_from_db(content_id):
+    content_tuple = [
+        c for c in sqlite_connection.execute(
+            'SELECT title,content FROM content WHERE id == (?)',
+            [content_id]
+    )][0]
+
+    return  content_tuple
+
+# 从数据库中获取图片链接
+# 返回图片url
+def get_image_url_from_db(image_id):
+    image_tuple = [
+        c for c in sqlite_connection.execute(
+            'SELECT url FROM content WHERE id == (?)',
+            [image_id]
+        )][0]
+
+    return image_tuple[0]
+
+
+# 获取表中最后一个id，如果没有就是0
+# 输入的值是表名
+def get_the_last_id_from_table(table):
+    last_id_list = [
+        id_ for id_ in sqlite_connection.execute(
+            'SELECT id FROM {} ORDER BY id DESC LIMIT 1'\
+            .format(table)
+        )]
+    if len(last_id_list) == 0:
+        last_id = 0
+    else:
+        last_id = last_id_list[0][0]
+    return last_id
 
 # 用于获得所有页面
 # 已经完工，估计没有什么bug
@@ -151,8 +179,8 @@ class AllPagesGetter:
             next_page_url = nav_urls[-1]
 
         # Test
-        # if self.pages > 0:
-        #    return
+        if self.pages > 0:
+           return
 
         # 这里使用一个迭代要方便些
         self.get_pages_from_list(next_page_url)
@@ -163,8 +191,6 @@ class PageHandler:
     def __init__(self, all_pages):
         self.all_pages = all_pages
         # [标题:处理好的内容源码,...]
-        self.contents = list()
-        self.images = list()
 
     @staticmethod
     def rep_method(got):
@@ -198,7 +224,7 @@ class PageHandler:
         # 如果此页面是重定向来的，内容就是'@@@LINK=' + title
         if redirected_from:
             logger('此页面是重定向过来的，正在添加重定向标志', 'no debug info')
-            self.contents.append([
+            insert_content([
                 redirected_from.find(title=True)['title'],
                 '@@@LINK=' + title])
             return
@@ -238,11 +264,10 @@ class PageHandler:
             main_content_source = main_content_source\
                 .replace(img['src'], img_replace)
             # 如果图片不在images里面就添加
-            if not img['src'] in self.images:
-                self.images.append(img['src'])
+            insert_img(img['src'])
 
         # 添加内容到self.contents当中
-        self.contents.append([title, main_content_source])
+        insert_content([title, main_content_source])
 
     def work(self):
         i = 0
@@ -254,15 +279,16 @@ class PageHandler:
                         self.all_pages) - i), 'no debug info')
             i += 1
             # Test
-            # if i == 4:
-            #    break
+            if i == 4:
+               break
 
 
-def download_image(images, site, quality):
-    images_last = len(images)
-    for img_original_url in images:
+def download_image(site, quality):
+    image_the_last_id = get_the_last_id_from_table('images')
+    for i in range(1, image_the_last_id+1):
 
-        images_last -= 1
+        images_last = image_the_last_id-i
+        img_original_url = get_image_url_from_db(i)
         # 处理图片链接
         if img_original_url.startswith('https://') \
                 or img_original_url.startswith('http://'):
@@ -333,14 +359,17 @@ def download_image(images, site, quality):
             continue
 
 
-def save_content(content):
+def save_content():
     achievement = open('Achievement.txt', 'w', encoding='utf-8')
-    num = len(content)
-    for title, now_content in content:
+    content_the_last_id = get_the_last_id_from_table('content')
+    for i in range(1, content_the_last_id+1):
+        title, now_content = get_content_from_db(i)
         achievement.write(title + '\n' + now_content)
-        if num > 1:
+        # 如果不是最后一个元素就换行
+        if i is not content_the_last_id:
             achievement.write('\n</>\n')
 
+    achievement.close()
 
 if __name__ == '__main__':
     # Test
@@ -385,11 +414,8 @@ if __name__ == '__main__':
     page_handler = PageHandler(all_pages)
     page_handler.work()
 
-    contents = page_handler.contents
-    imgs = page_handler.images
+    save_content()
 
-    save_content(contents)
-
-    download_image(imgs, site, image_quality)
+    download_image(site, image_quality)
 
     logger('Done', 'Done')
