@@ -1,0 +1,395 @@
+# -*- coding:utf-8 -*-
+
+from bs4 import BeautifulSoup
+
+# 用于压缩图片
+from PIL import Image
+
+import re
+import os
+import requests
+
+# 用于unquote
+import urllib.parse
+
+# 用于暂存图片于内存
+import io
+
+# 用于储存数据
+import sqlite3
+
+# 0是普通，1是debug
+debug_mode = 1
+
+
+def logger(content, debug):
+    if debug_mode == 0:
+        print(content)
+    else:
+        print('\n[debug]: '.join([content, debug]))
+
+
+# mode不为0就处理斜杠否则处理斜杠。
+def handle_file_name(string, mode=0):
+    if mode == 0:
+        return string\
+            .replace('"', '_').replace('<', '_') \
+            .replace('>', '_').replace('|', '_') \
+            .replace(':', '_').replace('?', '_').replace('*', '_')
+
+    else:
+        return string\
+            .replace('\\', '_').replace('/', '_') \
+            .replace('"', '_').replace('<', '_') \
+            .replace('>', '_').replace('|', '_') \
+            .replace(':', '_').replace('?', '_').replace('*', '_')
+
+
+def insert_content(content_list):
+    # 获取上一个数据的id并插入数据
+    last_id_list = [
+        id_ for id_ in sqlite_connection.execute(
+            'SELECT id FROM content ORDER BY id DESC LIMIT 1'
+        )]
+    if len(last_id_list)==0:
+        last_id = 0
+    else:
+        last_id = last_id_list[0][0]
+
+    sqlite_connection.execute(
+        'INSERT INTO content(id, title, content) values({id}, "{title}", "{content}")'\
+        .format(id=last_id+1, title=content_list[0], content=content_list[1])
+    )
+
+    sqlite_connection.commit()
+
+
+def insert_img(image_url):
+    # 判断链接是否存在于images表中
+    select_list = [
+        url for url in sqlite_connection.execute(
+            'SELECT * FROM images WHERE url in ({})'\
+            .format(image_url)
+    )]
+    if len(select_list) > 0:
+        return
+
+    # 获取上一个数据的id并插入数据
+    last_id_list = [
+        id_ for id_ in sqlite_connection.execute(
+            'SELECT id FROM images ORDER BY id DESC LIMIT 1'
+        )]
+    if len(last_id_list)==0:
+        last_id = 0
+    else:
+        last_id = last_id_list[0][0]
+
+    sqlite_connection.execute(
+        'INSERT INTO images(id, url) values({id}, "{url}")'\
+        .format(id=last_id+1, url=image_url)
+    )
+
+    sqlite_connection.commit()
+
+# 用于获得所有页面
+# 已经完工，估计没有什么bug
+class AllPagesGetter:
+    def __init__(self, site, all_pages_page):
+        self.site = site
+        self.all_pages_page = all_pages_page
+        self.all_pages = list()
+        self.pages = 0
+
+        # 初始化时就开始执行函数
+        self.get_pages_from_list(self.all_pages_page)
+
+    def get_pages_from_list(self, list_page):
+
+        # 获得索引页的源代码
+        # all_pages_soup 是此页所有的wiki页面的源码
+        # nav_tags_soup 是上一页下一页的导航
+        while True:
+            try:
+                page_source = requests.get(list_page, timeout=20).text
+                break
+            except Exception as e:
+                logger('获取{}错误'.format(list_page), str(e))
+
+        soup = BeautifulSoup(page_source, 'lxml')
+        all_pages_soup = soup.find(class_='mw-allpages-chunk')
+        nav_tags_soup = soup.find(class_='mw-allpages-nav')
+
+        # 获得索引页的全部链接并转化为绝对路径
+        relative_urls = all_pages_soup.find_all(href=True)
+        urls = list()
+        for single_href in relative_urls:
+            urls.append(self.site + urllib.parse.unquote(
+                single_href['href'],
+                encoding='utf-8'))
+
+        # 判断当前是否为最后一页，如果不是就获取下一页的链接
+
+        nav_tags = nav_tags_soup.find_all(href=True)
+        nav_urls = list()
+        for single_nav_tag in nav_tags:
+            nav_urls.append(self.site + single_nav_tag['href'])
+
+        self.all_pages += urls
+        self.pages += 1
+        logger(' | '.join(['获取所有页面...',
+                           '第{}页'.format(self.pages),
+                           '已经抓取{}个词条'.format(len(self.all_pages))]),
+               ' | '.join([nav_urls[0]]))
+
+        next_page_url = None
+        # 如果导航栏的链接只有一个(也就是只有上一页或者下一页)而且当前页面不是初始页面
+        # 这样就能保证是最后一页
+        if len(nav_urls) == 1 and list_page is not self.all_pages_page:
+            return
+        else:
+            # 下一页的链接就取最后一个
+            next_page_url = nav_urls[-1]
+
+        # Test
+        # if self.pages > 0:
+        #    return
+
+        # 这里使用一个迭代要方便些
+        self.get_pages_from_list(next_page_url)
+
+
+# 差不多已经完工
+class PageHandler:
+    def __init__(self, all_pages):
+        self.all_pages = all_pages
+        # [标题:处理好的内容源码,...]
+        self.contents = list()
+        self.images = list()
+
+    @staticmethod
+    def rep_method(got):
+        return '<a class="mw-headline" id=' + got.group(1) + '</a>'
+
+    def get_content(self, page_url):
+
+        # 获得网页源码
+        while True:
+            try:
+                content_source = requests.get(page_url, timeout=20).text
+                break
+            except BaseException as e:
+                logger(page_url + '  获取失败，正在重试', str(e))
+
+        soup = BeautifulSoup(content_source, 'lxml')
+
+        # 获得主内容源码，标题, 如果有重定向就获取
+        main_content_source_soup = soup.find(id='mw-content-text')
+        main_content_source = str(main_content_source_soup)
+        redirected_from = soup.find(class_='mw-redirectedfrom')
+        title_soup = soup.find(id='firstHeading')
+        # 如果没有标题（可能是没有此页面导致的），就跳过。
+        if title_soup:
+            # 如果标题是数字，get_text就会返回一个int，这样子下面处理就会出问题
+            title = str(title_soup.get_text())
+        else:
+            logger('此页面没有内容，跳过', 'no debug info')
+            return
+
+        # 如果此页面是重定向来的，内容就是'@@@LINK=' + title
+        if redirected_from:
+            logger('此页面是重定向过来的，正在添加重定向标志', 'no debug info')
+            self.contents.append([
+                redirected_from.find(title=True)['title'],
+                '@@@LINK=' + title])
+            return
+
+        # 替换链接为key
+        links = main_content_source_soup.find_all(href=True, title=True)
+        for link in links:
+            main_content_source = main_content_source.replace(
+                'href="' + link['href'], 'href="' + 'entry://{}'.format(link['title']))
+
+        # 替换section为mdict格式
+        main_content_source = main_content_source.replace(
+            'href="#', 'href="entry://#')
+        main_content_source = re.sub(
+            r'<span class="mw-headline" id=(.*)</span>',
+            self.rep_method,
+            main_content_source)
+
+        # 寻找图片
+        img_tags = main_content_source_soup.find_all('img', src=True)
+        for img in img_tags:
+            # 这里也处理一下图片src
+            # 1.unquote
+            # 2.替换windows文件名敏感字符
+            # 3.替换后缀名
+            # 4.替换路径为本地路径
+            img_replace = urllib.parse.unquote(img['src'])
+            img_replace = handle_file_name(img_replace)
+            img_replace = img_replace\
+                .replace('.png', '.jpg')\
+                .replace('.gif', '.jpg')\
+                .replace('.jpeg', '.jpg') \
+                .replace('https://', '/')\
+                .replace('http://', '/') \
+                .replace('//', '/')
+
+            main_content_source = main_content_source\
+                .replace(img['src'], img_replace)
+            # 如果图片不在images里面就添加
+            if not img['src'] in self.images:
+                self.images.append(img['src'])
+
+        # 添加内容到self.contents当中
+        self.contents.append([title, main_content_source])
+
+    def work(self):
+        i = 0
+        for url in self.all_pages:
+            self.get_content(url)
+            logger(
+                '正在获取\n{}\n剩余页面:{}'.format(
+                    url, len(
+                        self.all_pages) - i), 'no debug info')
+            i += 1
+            # Test
+            # if i == 4:
+            #    break
+
+
+def download_image(images, site, quality):
+    images_last = len(images)
+    for img_original_url in images:
+
+        images_last -= 1
+        # 处理图片链接
+        if img_original_url.startswith('https://') \
+                or img_original_url.startswith('http://'):
+            img_url = img_original_url
+
+        elif img_original_url.startswith('//'):
+            img_url = 'http:' + img_original_url
+
+        elif img_original_url.startswith('/'):
+            img_url = site + img_original_url
+
+        # 如果这三种情况都不是的话就跳过这张图片
+        else:
+            continue
+
+        # 这个是文件的相对路径
+        img_file_rear_path = img_url\
+            .replace('https://', '')\
+            .replace('http://', '')
+
+        # unquote一下防止文件名过长
+        img_file_rear_path = urllib.parse.unquote(img_file_rear_path)
+
+        img_file_path = os.path.join(
+            os.path.abspath('.'), 'upload', img_file_rear_path)
+        # 处理一下文件路径
+        img_file_path = handle_file_name(img_file_path)
+        img_file_path = img_file_path \
+            .replace('.png', '.jpg') \
+            .replace('.gif', '.jpg') \
+            .replace('.jpeg', '.jpg')
+
+        img_forth_path, img_name = os.path.split(img_file_path)
+
+        # 如果这张图片已经存在就跳过
+        if os.path.exists(img_file_path):
+            logger('{}已经存在，跳过。'.format(img_name), 'no debug info')
+            continue
+
+        logger(
+            '正在保存{}, 剩余{}张'.format(
+                img_name,
+                images_last),
+            img_original_url +
+            img_file_path)
+        # 如果目录不存在就创建
+        if not os.path.exists(img_forth_path):
+            os.makedirs(img_forth_path)
+
+        # 尝试获取图片，失败就放弃。
+        try:
+            img_requests = requests.get(img_url, timeout=30)
+            if not img_requests.ok:
+                continue
+        except Exception as e:
+            logger(img_name + '获取失败，放弃。', str(e))
+            continue
+
+        # 打开图片，并且处理图片为RGB模式，省空间
+        # 不清楚为什么这里也会出错，不过姑且先加一个try吧
+        try:
+            img_object = Image.open(io.BytesIO(img_requests.content))
+            img_rgb = img_object.convert('RGB')
+            # 以一定的质量保存图片，质量在main里面指定
+            img_rgb.save(img_file_path, quality=quality)
+        except Exception as e:
+            logger('保存图片{}失败,放弃。'.format(img_name), str(e))
+            continue
+
+
+def save_content(content):
+    achievement = open('Achievement.txt', 'w', encoding='utf-8')
+    num = len(content)
+    for title, now_content in content:
+        achievement.write(title + '\n' + now_content)
+        if num > 1:
+            achievement.write('\n</>\n')
+
+
+if __name__ == '__main__':
+    # Test
+    # moegirl:
+    #site = 'https://zh.moegirl.org'
+    #all_pages_page = 'https://zh.moegirl.org/Special:%E6%89%80%E6%9C%89%E9%A1%B5%E9%9D%A2'
+
+    # thwiki:
+    site = 'https://thwiki.cc'
+    all_pages_page = site + '/Special:Allpages'
+    # 下载图片质量，因为wiki图片很多，所以要压缩一下。
+    image_quality = 50
+
+    # 以下代码块新建sqlite文件。
+    handled_site_name = handle_file_name(site, 1)
+    sqlite_file_name = handle_file_name(handled_site_name) + '.db'
+    sqlite_file_path = os.path.join(os.path.abspath('.'), sqlite_file_name)
+    if os.path.exists(sqlite_file_path):
+        for t in range(2, 1001):
+            sqlite_file_name = handle_file_name(handled_site_name) + '{}.db'.format(t)
+            sqlite_file_path = os.path.join(
+                os.path.abspath('.'), sqlite_file_name)
+            if not os.path.exists(sqlite_file_path):
+                break
+    logger('正在创建数据库','sqlite_file_path:' + sqlite_file_path)
+    sqlite_connection = sqlite3.connect(sqlite_file_path)
+    sqlite_connection.execute(
+        'CREATE TABLE content(id INTEGER, title TEXT, content TEXT)'
+    )
+    sqlite_connection.execute(
+        'CREATE TABLE images(id INTEGER, url TEXT)'
+    )
+
+    # 以下代码块获取所有页面
+    pages_getter = AllPagesGetter(site, all_pages_page)
+    all_pages = pages_getter.all_pages
+
+    # 临时
+    # with open('all_pages.txt', 'w', encoding='utf-8') as f:
+    #    f.write(str(all_pages))
+
+    page_handler = PageHandler(all_pages)
+    page_handler.work()
+
+    contents = page_handler.contents
+    imgs = page_handler.images
+
+    save_content(contents)
+
+    download_image(imgs, site, image_quality)
+
+    logger('Done', 'Done')
