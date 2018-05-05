@@ -50,8 +50,6 @@ def insert_content(content_list):
     # 获取上一个数据的id并插入数据
     last_id = get_the_last_id_from_table('content')
 
-    # Test
-    print(content_list)
     sqlite_connection.execute(
         'INSERT INTO content(id, title, content) values(?,?,?)',
         [last_id+1, content_list[0], content_list[1]]
@@ -223,7 +221,7 @@ class PageHandler:
 
         # 如果此页面是重定向来的，内容就是'@@@LINK=' + title
         if redirected_from:
-            logger('此页面是重定向过来的，正在添加重定向标志', 'no debug info')
+            logger('{}\n此页面是重定向过来的，正在添加重定向标志'.format(title), 'no debug info')
             insert_content([
                 redirected_from.find(title=True)['title'],
                 '@@@LINK=' + title])
@@ -279,7 +277,7 @@ class PageHandler:
                         self.all_pages) - i), 'no debug info')
             i += 1
             # Test
-            if i == 4:
+            if i == 200:
                break
 
 
@@ -330,7 +328,7 @@ def download_image(site, quality):
             continue
 
         logger(
-            '正在保存{}, 剩余{}张'.format(
+            '正在保存{}\n剩余{}张'.format(
                 img_name,
                 images_last),
             img_original_url +
