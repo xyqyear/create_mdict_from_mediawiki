@@ -45,6 +45,30 @@ def handle_file_name(string, mode=0):
             .replace(':', '_').replace('?', '_').replace('*', '_')
 
 
+# 用于新建数据库文件
+def new_db_file(site_url):
+    handled_site_name = handle_file_name(site_url, 1)
+    sqlite_file_name = handle_file_name(handled_site_name) + '.db'
+    sqlite_file_path = os.path.join(os.path.abspath('.'), sqlite_file_name)
+    if os.path.exists(sqlite_file_path):
+        for t in range(2, 1001):
+            sqlite_file_name = handle_file_name(
+                handled_site_name) + '{}.db'.format(t)
+            sqlite_file_path = os.path.join(
+                os.path.abspath('.'), sqlite_file_name)
+            if not os.path.exists(sqlite_file_path):
+                break
+    logger('正在创建数据库', 'sqlite_file_path:' + sqlite_file_path)
+    sqlite_con = sqlite3.connect(sqlite_file_path)
+    sqlite_con.execute(
+        'CREATE TABLE content(id INTEGER, title TEXT, content TEXT)'
+    )
+    sqlite_con.execute(
+        'CREATE TABLE images(id INTEGER, url TEXT)'
+    )
+    return sqlite_con
+
+
 # 用于在表中插入内容
 def insert_content(content_list):
     # 获取上一个数据的id并插入数据
@@ -52,7 +76,7 @@ def insert_content(content_list):
 
     sqlite_connection.execute(
         'INSERT INTO content(id, title, content) values(?,?,?)',
-        [last_id+1, content_list[0], content_list[1]]
+        [last_id + 1, content_list[0], content_list[1]]
     )
 
     sqlite_connection.commit()
@@ -65,7 +89,7 @@ def insert_img(image_url):
         url for url in sqlite_connection.execute(
             'SELECT * FROM images WHERE url in (?)',
             [image_url]
-    )]
+        )]
     if len(select_list) > 0:
         return
 
@@ -74,7 +98,7 @@ def insert_img(image_url):
 
     sqlite_connection.execute(
         'INSERT INTO images(id, url) values(?,?)',
-        [last_id+1, image_url]
+        [last_id + 1, image_url]
     )
 
     sqlite_connection.commit()
@@ -87,9 +111,10 @@ def get_content_from_db(content_id):
         c for c in sqlite_connection.execute(
             'SELECT title,content FROM content WHERE id == (?)',
             [content_id]
-    )][0]
+        )][0]
 
-    return  content_tuple
+    return content_tuple
+
 
 # 从数据库中获取图片链接
 # 返回图片url
@@ -108,7 +133,7 @@ def get_image_url_from_db(image_id):
 def get_the_last_id_from_table(table):
     last_id_list = [
         id_ for id_ in sqlite_connection.execute(
-            'SELECT id FROM {} ORDER BY id DESC LIMIT 1'\
+            'SELECT id FROM {} ORDER BY id DESC LIMIT 1'
             .format(table)
         )]
     if len(last_id_list) == 0:
@@ -116,6 +141,7 @@ def get_the_last_id_from_table(table):
     else:
         last_id = last_id_list[0][0]
     return last_id
+
 
 # 用于获得所有页面
 # 已经完工，估计没有什么bug
@@ -154,7 +180,6 @@ class AllPagesGetter:
                 encoding='utf-8'))
 
         # 判断当前是否为最后一页，如果不是就获取下一页的链接
-
         nav_tags = nav_tags_soup.find_all(href=True)
         nav_urls = list()
         for single_nav_tag in nav_tags:
@@ -176,7 +201,7 @@ class AllPagesGetter:
             next_page_url = nav_urls[-1]
 
         # Test
-        #if self.pages > 0:
+        # if self.pages > 0:
         #   return
 
         # 这里使用一个迭代要方便些
@@ -260,7 +285,6 @@ class PageHandler:
 
             main_content_source = main_content_source\
                 .replace(img['src'], img_replace)
-            # 如果图片不在images里面就添加
             insert_img(img['src'])
 
         # 添加内容到self.contents当中
@@ -272,19 +296,20 @@ class PageHandler:
             self.get_content(url)
             logger(
                 '正在获取\n{}\n剩余页面:{}'.format(
-                    url, len(
-                        self.all_pages) - i), 'no debug info')
+                    url,len(self.all_pages) - i),
+                    'no debug info')
             i += 1
             # Test
-            #if i == 200:
+            # if i == 200:
             #   break
 
 
+# 下载图片
 def download_image(main_site, quality):
     image_the_last_id = get_the_last_id_from_table('images')
-    for i in range(1, image_the_last_id+1):
+    for i in range(1, image_the_last_id + 1):
 
-        images_last = image_the_last_id-i
+        images_last = image_the_last_id - i
         img_original_url = get_image_url_from_db(i)
         # 处理图片链接
         if img_original_url.startswith('https://') \
@@ -357,10 +382,11 @@ def download_image(main_site, quality):
             continue
 
 
+# 保存mdict源文件内容
 def save_content():
     achievement = open('Achievement.txt', 'w', encoding='utf-8')
     content_the_last_id = get_the_last_id_from_table('content')
-    for i in range(1, content_the_last_id+1):
+    for i in range(1, content_the_last_id + 1):
         title, now_content = get_content_from_db(i)
         achievement.write(title + '\n' + now_content)
         # 如果不是最后一个元素就换行
@@ -369,51 +395,34 @@ def save_content():
 
     achievement.close()
 
+
 if __name__ == '__main__':
     # Test
     # moegirl:
     #site = 'https://zh.moegirl.org'
-    #all_pages_page = 'https://zh.moegirl.org/Special:%E6%89%80%E6%9C%89%E9%A1%B5%E9%9D%A2'
 
     # thwiki:
     site = 'https://thwiki.cc'
+
     all_pages_page = site + '/Special:Allpages'
     # 下载图片质量，因为wiki图片很多，所以要压缩一下。
     image_quality = 50
 
-    # 以下代码块新建sqlite文件。
-    handled_site_name = handle_file_name(site, 1)
-    sqlite_file_name = handle_file_name(handled_site_name) + '.db'
-    sqlite_file_path = os.path.join(os.path.abspath('.'), sqlite_file_name)
-    if os.path.exists(sqlite_file_path):
-        for t in range(2, 1001):
-            sqlite_file_name = handle_file_name(handled_site_name) + '{}.db'.format(t)
-            sqlite_file_path = os.path.join(
-                os.path.abspath('.'), sqlite_file_name)
-            if not os.path.exists(sqlite_file_path):
-                break
-    logger('正在创建数据库','sqlite_file_path:' + sqlite_file_path)
-    sqlite_connection = sqlite3.connect(sqlite_file_path)
-    sqlite_connection.execute(
-        'CREATE TABLE content(id INTEGER, title TEXT, content TEXT)'
-    )
-    sqlite_connection.execute(
-        'CREATE TABLE images(id INTEGER, url TEXT)'
-    )
+    # 新建sqlite文件并获得sqlite的connection
+    sqlite_connection = new_db_file(site)
 
-    # 以下代码块获取所有页面
+    # 获取所有页面
     pages_getter = AllPagesGetter(site, all_pages_page)
     all_pages = pages_getter.all_pages
 
-    # 临时
-    # with open('all_pages.txt', 'w', encoding='utf-8') as f:
-    #    f.write(str(all_pages))
-
+    # 处理页面并获取图片链接，存入数据库中
     page_handler = PageHandler(all_pages)
     page_handler.work()
 
+    # 保存mdict源文件内容
     save_content()
 
+    # 下载图片
     download_image(site, image_quality)
 
     logger('Done', 'Done')
