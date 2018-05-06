@@ -7,6 +7,7 @@ from PIL import Image
 
 import re
 import os
+import time
 import requests
 
 # 用于unquote
@@ -23,11 +24,17 @@ debug_mode = 1
 
 
 def logger(content, debug):
-    if debug_mode == 0:
-        print(content)
-    else:
-        print('\n[debug]: '.join([content, debug]))
+    with open('latest_log.txt','a',encoding='utf-8') as log_file:
+        if debug_mode == 0 and content == '':
+            return
+        elif debug_mode == 1:
+            log_info = '\n[debug]: '.join([content, debug])
+        else:
+            log_info = content
 
+        log_info = '[{}]:\n'.format(time.asctime()) + log_info + '\n'
+        print(log_info)
+        log_file.write(log_info)
 
 # mode不为0就处理斜杠否则处理斜杠。
 def handle_file_name(string, mode=0):
@@ -71,6 +78,7 @@ def new_db_file(site_url):
 
 # 用于在表中插入内容
 def insert_content(content_list):
+    b = time.time()
     # 获取上一个数据的id并插入数据
     last_id = get_the_last_id_from_table('content')
 
@@ -80,10 +88,13 @@ def insert_content(content_list):
     )
 
     sqlite_connection.commit()
+    logger('','[insert_content]: sqlite_time:{}'\
+           .format(time.time()-b))
 
 
 # 用于在表中插入图片链接
 def insert_img(image_url):
+    b = time.time()
     # 判断链接是否存在于images表中
     select_list = [
         url for url in sqlite_connection.execute(
@@ -102,29 +113,36 @@ def insert_img(image_url):
     )
 
     sqlite_connection.commit()
+    logger('', '[insert_img]: sqlite_time:{}'\
+           .format(time.time() - b))
 
 
 # 从数据库中获取内容
 # 返回(title, content)形式的元组
 def get_content_from_db(content_id):
+    b = time.time()
     content_tuple = [
         c for c in sqlite_connection.execute(
             'SELECT title,content FROM content WHERE id == (?)',
             [content_id]
         )][0]
 
+    logger('', '[get_content_from_db]: content_id:{}\nsqlite_time:{}'\
+           .format(content_id, time.time() - b))
     return content_tuple
 
 
 # 从数据库中获取图片链接
 # 返回图片url
 def get_image_url_from_db(image_id):
+    b = time.time()
     image_tuple = [
         c for c in sqlite_connection.execute(
             'SELECT url FROM images WHERE id == (?)',
             [image_id]
         )][0]
-
+    logger('', '[get_image_url_from_db]: image_id:{}\nsqlite_time:{}'\
+           .format(image_id, time.time() - b))
     return image_tuple[0]
 
 
@@ -165,7 +183,8 @@ class AllPagesGetter:
                 page_source = requests.get(list_page, timeout=20).text
                 break
             except Exception as e:
-                logger('获取{}错误'.format(list_page), str(e))
+                logger('获取{}错误,五秒后重试。'.format(list_page), str(e))
+                time.sleep(5)
 
         soup = BeautifulSoup(page_source, 'lxml')
         all_pages_soup = soup.find(class_='mw-allpages-chunk')
