@@ -221,12 +221,15 @@ class PageHandler:
     def get_content(self, page_url):
 
         # 获得网页源码
-        while True:
+        content_source = str()
+        for i in range(1,6):
             try:
                 content_source = requests.get(page_url, timeout=20).text
                 break
             except BaseException as e:
-                logger(page_url + '  获取失败，正在重试', str(e))
+                if i==5:
+                    break
+                logger(page_url + '  获取失败，正在重试第{}次，一共4次'.format(i), str(e))
 
         soup = BeautifulSoup(content_source, 'lxml')
 
