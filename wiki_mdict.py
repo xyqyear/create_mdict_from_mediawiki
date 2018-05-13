@@ -184,7 +184,7 @@ class AllPagesGetter:
                 break
             except Exception as e:
                 logger('获取{}错误,五秒后重试。'.format(list_page), str(e))
-                time.sleep(5)
+                time.sleep(3)
 
         soup = BeautifulSoup(page_source, 'lxml')
         all_pages_soup = soup.find(class_='mw-allpages-chunk')
@@ -241,14 +241,17 @@ class PageHandler:
 
         # 获得网页源码
         content_source = str()
-        for i in range(1,6):
+        retry_count = 4
+        while retry_count>0:
             try:
                 content_source = requests.get(page_url, timeout=20).text
                 break
             except BaseException as e:
-                if i==5:
-                    break
-                logger(page_url + '  获取失败，正在重试第{}次，一共4次'.format(i), str(e))
+                retry_count -= 1
+                logger(page_url + '  获取失败，重试剩余{}次'.format(retry_count), str(e))
+                time.sleep(3)
+        if retry_count == 0:
+            return
 
         soup = BeautifulSoup(content_source, 'lxml')
 
@@ -383,13 +386,21 @@ def download_image(main_site, quality):
         if not os.path.exists(img_forth_path):
             os.makedirs(img_forth_path)
 
-        # 尝试获取图片，失败就放弃。
-        try:
-            img_requests = requests.get(img_url, timeout=30)
-            if not img_requests.ok:
-                continue
-        except Exception as e:
-            logger(img_name + '获取失败，放弃。', str(e))
+        # 尝试获取图片。
+        img_requests = None
+        retry_count = 4
+        while retry_count>0:
+            try:
+                img_requests = requests.get(img_url, timeout=30)
+                if not img_requests.ok:
+                    retry_count = 0
+                    break
+                break
+            except Exception as e:
+                retry_count -= 1
+                logger(img_name + '获取失败，重试第{}次'.format(retry_count), str(e))
+                time.sleep(3)
+        if retry_count == 0:
             continue
 
         # 打开图片，并且处理图片为RGB模式，省空间
