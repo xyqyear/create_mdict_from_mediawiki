@@ -36,6 +36,7 @@ def logger(content, debug):
         print(log_info)
         log_file.write(log_info)
 
+
 # mode不为0就处理斜杠否则处理斜杠。
 def handle_file_name(string, mode=0):
     if mode == 0:
@@ -316,8 +317,9 @@ class PageHandler:
         insert_content([title, main_content_source])
 
     def work(self):
-        i = 0
-        for url in self.all_pages:
+        # 从直接for url改成for int，为断点续传做准备
+        for i in range(len(self.all_pages)):
+            url = self.all_pages[i]
             self.get_content(url)
             logger(
                 '正在获取\n{}\n剩余页面:{}'.format(

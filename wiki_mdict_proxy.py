@@ -30,6 +30,10 @@ def get_proxy():
     return proxy_address
 
 
+def delete_proxy(proxy_):
+    requests.get("http://{}/delete/?proxy={}".format(proxy_pool, proxy_))
+
+
 def logger(content, debug):
     with open('latest_log.txt','a',encoding='utf-8') as log_file:
         if debug_mode == 0 and content == '':
@@ -186,8 +190,8 @@ class AllPagesGetter:
         # all_pages_soup 是此页所有的wiki页面的源码
         # nav_tags_soup 是上一页下一页的导航
         while True:
+            proxy = get_proxy()
             try:
-                proxy = get_proxy()
                 page_source = requests.get(
                     list_page,
                     timeout=20,
@@ -197,6 +201,9 @@ class AllPagesGetter:
                 break
             except Exception as e:
                 logger('获取{}错误,重试。'.format(list_page), str(e))
+                if 'Cannot connect to proxy' in str(e) or\
+                    'Connection aborted' in str(e):
+                    delete_proxy(proxy)
 
         soup = BeautifulSoup(page_source, 'lxml')
         all_pages_soup = soup.find(class_='mw-allpages-chunk')
@@ -253,10 +260,10 @@ class PageHandler:
 
         # 获得网页源码
         content_source = str()
-        retry_count = 4
+        retry_count = 6
         while retry_count > 0:
+            proxy = get_proxy()
             try:
-                proxy = get_proxy()
                 content_source = requests.get(
                     page_url,
                     timeout=20,
@@ -267,7 +274,9 @@ class PageHandler:
             except BaseException as e:
                 retry_count -= 1
                 logger(page_url + '获取失败，重试剩余{}次'.format(retry_count), str(e))
-                if 'Cannot connect to proxy' in str(e):
+                if 'Cannot connect to proxy' in str(e) or\
+                    'Connection aborted' in str(e):
+                    delete_proxy(proxy)
                     retry_count += 1
         if retry_count == 0:
             return
@@ -335,8 +344,9 @@ class PageHandler:
         insert_content([title, main_content_source])
 
     def work(self):
-        i = 0
-        for url in self.all_pages:
+        # 从直接for url改成for int，为断点续传做准备
+        for i in range(len(self.all_pages)):
+            url = self.all_pages[i]
             self.get_content(url)
             logger(
                 '正在获取\n{}\n剩余页面:{}'.format(
@@ -399,18 +409,17 @@ def download_image(main_site, quality):
             '正在保存{}\n剩余{}张'.format(
                 img_name,
                 images_last),
-            img_original_url +
-            img_file_path)
+            img_original_url + '\nfilename:' + img_file_path)
         # 如果目录不存在就创建
         if not os.path.exists(img_forth_path):
             os.makedirs(img_forth_path)
 
         # 尝试获取图片。
         img_requests = None
-        retry_count = 4
+        retry_count = 6
         while retry_count > 0:
+            proxy = get_proxy()
             try:
-                proxy = get_proxy()
                 img_requests = requests.get(
                     img_url,
                     timeout=30,
@@ -424,7 +433,9 @@ def download_image(main_site, quality):
             except Exception as e:
                 retry_count -= 1
                 logger(img_name + '获取失败，重试第{}次'.format(retry_count), str(e))
-                if 'Cannot connect to proxy' in str(e):
+                if 'Cannot connect to proxy' in str(e) or\
+                    'Connection aborted' in str(e):
+                    delete_proxy(proxy)
                     retry_count += 1
 
         if retry_count == 0:
