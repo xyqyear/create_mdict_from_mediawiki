@@ -46,7 +46,9 @@ def logger(content, debug):
 
         log_info = '[{}]:\n'.format(time.asctime()) + log_info + '\n'
         print(log_info)
-        log_file.write(log_info)
+        log_file_info = '\n[debug]: '.join([content, debug])
+        log_file_info = '[{}]:\n'.format(time.asctime()) + log_file_info + '\n'
+        log_file.write(log_file_info)
 
 
 # 获得一个代理地址
@@ -76,40 +78,57 @@ def handle_file_name(string, mode=0):
             .replace(':', '_').replace('?', '_').replace('*', '_')
 
 
-# 用于新建数据库文件
+# 用于获取数据库对象
 def new_db_file(site_url):
     handled_site_name = handle_file_name(site_url, 1)
     sqlite_file_name = handle_file_name(handled_site_name) + '.db'
     sqlite_file_path = os.path.join(os.path.abspath('.'), sqlite_file_name)
-    if os.path.exists(sqlite_file_path):
-        for t in range(2, 1001):
-            sqlite_file_name = handle_file_name(
-                handled_site_name) + '{}.db'.format(t)
-            sqlite_file_path = os.path.join(
-                os.path.abspath('.'), sqlite_file_name)
-            if not os.path.exists(sqlite_file_path):
-                break
-    logger('正在创建数据库', 'sqlite_file_path:' + sqlite_file_path)
+    is_exists = os.path.exists(sqlite_file_path)
+    logger('使用数据库文件：{}'.format(sqlite_file_name),
+           'sqlite_file_path:' + sqlite_file_path)
     sqlite_con = sqlite3.connect(sqlite_file_path)
-    sqlite_con.execute(
-        'CREATE TABLE content(id INTEGER, title TEXT, content TEXT)'
-    )
-    sqlite_con.execute(
-        'CREATE TABLE images(id INTEGER, url TEXT)'
-    )
+    if not is_exists:
+        sqlite_con.execute(
+            'CREATE TABLE content(id INTEGER, title TEXT, content TEXT, date TEXT)'
+        )
+        sqlite_con.execute(
+            'CREATE TABLE images(id INTEGER, url TEXT)'
+        )
+        sqlite_con.execute(
+            'CREATE TABLE process(id INTEGER, all_pages TEXT)'
+        )
+        sqlite_con.execute(
+            'INSERT INTO process(id, all_pages) values(0, "")'
+        )
+        sqlite_con.commit()
     return sqlite_con
 
 
 # 用于在表中插入内容
+# content_list: 0标题 1内容 2日期
 def insert_content(content_list):
     b = time.time()
-    # 获取上一个数据的id并插入数据
-    last_id = get_the_last_id_from_table('content')
 
-    sqlite_connection.execute(
-        'INSERT INTO content(id, title, content) values(?,?,?)',
-        [last_id + 1, content_list[0], content_list[1]]
-    )
+    # 检测title是否存在，如果存在就更新，不存在就插入
+    select_content = [
+        i[0] for i in sqlite_connection.execute(
+            'SELECT title FROM content WHERE title == (?)',
+            [content_list[0]]
+        )
+    ]
+    if select_content:
+        # 更新数据
+        sqlite_connection.execute(
+            'UPDATE content SET content=(?),date=(?) WHERE title==(?)',
+            [content_list[1], content_list[2], content_list[0]]
+        )
+    else:
+        # 获取上一个数据的id并插入数据
+        last_id = get_the_last_id_from_table('content')
+        sqlite_connection.execute(
+            'INSERT INTO content(id, title, content, date) values(?,?,?,?)',
+            [last_id + 1, content_list[0], content_list[1], content_list[2]]
+        )
 
     sqlite_connection.commit()
     logger('', '[insert_content]: sqlite_time:{}'
@@ -122,7 +141,7 @@ def insert_img(image_url):
     # 判断链接是否存在于images表中
     select_list = [
         url for url in sqlite_connection.execute(
-            'SELECT * FROM images WHERE url in (?)',
+            'SELECT id FROM images WHERE url in (?)',
             [image_url]
         )]
     if len(select_list) > 0:
@@ -139,6 +158,26 @@ def insert_img(image_url):
     sqlite_connection.commit()
     logger('', '[insert_img]: sqlite_time:{}'
            .format(time.time() - b))
+
+
+# 用于判断页面是否是最新
+def is_content_up2date(title, date_text):
+    b = time.time()
+
+    # 判断title是否存在
+    select_list = [
+        date[0] for date in sqlite_connection.execute(
+            'SELECT date FROM content WHERE title == (?)',
+            [title]
+        )
+    ]
+
+    logger('', '[is_content_up2date]: sqlite_tile:{}'
+           .format(time.time() - b))
+    if select_list:
+        if date_text == select_list[0]:
+            return True
+    return False
 
 
 # 从数据库中获取内容
@@ -272,6 +311,8 @@ class AllPagesGetter:
 class PageHandler:
     def __init__(self, all_pages_list):
         self.all_pages = all_pages_list
+        # 用于设置目前的页面处理进程
+        self.process = 0
         # [标题:处理好的内容源码,...]
 
     @staticmethod
@@ -319,20 +360,36 @@ class PageHandler:
         if retry_count == 0:
             return
 
-        soup = BeautifulSoup(content_source, 'lxml')
-
-        # 获得主内容源码，标题, 如果有重定向就获取
-        main_content_source_soup = soup.find(id='mw-content-text')
-        main_content_source = str(main_content_source_soup)
-        redirected_from = soup.find(class_='mw-redirectedfrom')
-        title_soup = soup.find(id='firstHeading')
-        # 如果没有标题（可能是没有此页面导致的），就跳过。
-        if title_soup:
+        # 获得标题，如果没有标题就跳过
+        title_list = re.findall(
+            r'<h1 id="firstHeading" class="firstHeading" lang=".*">(.*)</h1>',
+            content_source
+        )
+        if title_list:
             # 如果标题是数字，get_text就会返回一个int，这样子下面处理就会出问题
-            title = str(title_soup.get_text())
+            title = title_list[0]
         else:
             logger('此页面没有内容，跳过', 'no debug info')
             return
+
+        # 页面修改日期,用于判断页面是否更新
+        mod_date = re.findall(
+            r'<li id="footer-info-lastmod">(.*)</li>',
+            content_source
+        )
+        if mod_date:
+            date_text = mod_date[0]
+            is_up2date = is_content_up2date(title, date_text)
+            if is_up2date:
+                logger('此页面是最新的，跳过。', 'no debug info')
+                return
+        else:
+            date_text = 'None'
+
+        soup = BeautifulSoup(content_source, 'lxml')
+        main_content_source_soup = soup.find(id='mw-content-text')
+        main_content_source = str(main_content_source_soup)
+        redirected_from = soup.find(class_='mw-redirectedfrom')
 
         # 如果此页面是重定向来的，内容就是'@@@LINK=' + title
         if redirected_from:
@@ -340,7 +397,10 @@ class PageHandler:
                    .format(title), 'no debug info')
             insert_content([
                 redirected_from.find(title=True)['title'],
-                '@@@LINK=' + title])
+                '@@@LINK=' + title,
+                date_text
+            ]
+            )
             return
 
         # 替换链接为key
@@ -380,20 +440,21 @@ class PageHandler:
             insert_img(img['src'])
 
         # 添加内容到self.contents当中
-        insert_content([title, main_content_source])
+        insert_content([title, main_content_source, date_text])
 
     def work(self):
         # 从直接for url改成for int，为断点续传做准备
-        for i in range(len(self.all_pages)):
+        for i in range(self.process, len(self.all_pages)):
             url = self.all_pages[i]
-            self.get_content(url)
             logger(
                 '正在获取\n{}\n剩余页面:{}'.format(
                     url, len(self.all_pages) - i),
                 'no debug info')
-            i += 1
+            self.get_content(url)
+            sqlite_connection.execute('UPDATE process set id=(?)',[i])
+            sqlite_connection.commit()
             if test_mode:
-                if i == 10:
+                if i == 20:
                     break
 
 
@@ -533,18 +594,39 @@ if __name__ == '__main__':
     # 新建sqlite文件并获得sqlite的connection
     sqlite_connection = new_db_file(site)
 
-    # 获取所有页面
-    pages_getter = AllPagesGetter(site, all_pages_page)
-    all_pages = pages_getter.all_pages
+    process_id = [
+        kk[0] for kk in sqlite_connection.execute(
+            'SELECT id FROM process'
+        )
+    ][0]
+    # 如果未获取所有页面就获取所有页面
+    if process_id == 0:
+        pages_getter = AllPagesGetter(site, all_pages_page)
+        all_pages = pages_getter.all_pages
+        sqlite_connection.execute('UPDATE process set all_pages=(?)',[str(all_pages)])
+        sqlite_connection.commit()
+    else:
+        all_pages_str = [
+            pages_str[0] for pages_str in sqlite_connection.execute(
+                'SELECT all_pages FROM process'
+            )
+        ][0]
+        # 转化文本形式的all_pages为列表
+        all_pages = eval(all_pages_str)
 
     # 处理页面并获取图片链接，存入数据库中
-    page_handler = PageHandler(all_pages)
-    page_handler.work()
-
-    # 保存mdict源文件内容
-    save_content()
+    if process_id >= 0:
+        page_handler = PageHandler(all_pages)
+        page_handler.process = process_id
+        page_handler.work()
+        # 保存mdict源文件内容
+        save_content()
+        sqlite_connection.execute('UPDATE process set id=-1')
+        sqlite_connection.commit()
 
     # 下载图片
     download_image(site, image_quality)
+    sqlite_connection.execute('UPDATE process set id=0')
+    sqlite_connection.commit()
 
     logger('Done', 'Done')
