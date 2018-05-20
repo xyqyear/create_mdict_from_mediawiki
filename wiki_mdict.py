@@ -180,6 +180,16 @@ def is_content_up2date(title, date_text):
     return False
 
 
+# 更新进程id
+def update_process_id(pro_id):
+    b = time.time()
+    sqlite_connection.execute('UPDATE process set id=(?)', [pro_id])
+    sqlite_connection.commit()
+    logger('', '[update_process_id]:sqlite_time:{}'
+           .format(time.time() - b)
+           )
+
+
 # 从数据库中获取内容
 # 返回(title, content)形式的元组
 def get_content_from_db(content_id):
@@ -399,8 +409,7 @@ class PageHandler:
                 redirected_from.find(title=True)['title'],
                 '@@@LINK=' + title,
                 date_text
-            ]
-            )
+            ])
             return
 
         # 替换链接为key
@@ -451,8 +460,7 @@ class PageHandler:
                     url, len(self.all_pages) - i),
                 'no debug info')
             self.get_content(url)
-            sqlite_connection.execute('UPDATE process set id=(?)',[i])
-            sqlite_connection.commit()
+            update_process_id(i)
             if test_mode:
                 if i == 20:
                     break
@@ -603,7 +611,9 @@ if __name__ == '__main__':
     if process_id == 0:
         pages_getter = AllPagesGetter(site, all_pages_page)
         all_pages = pages_getter.all_pages
-        sqlite_connection.execute('UPDATE process set all_pages=(?)',[str(all_pages)])
+        sqlite_connection.execute(
+            'UPDATE process set all_pages=(?)', [
+                str(all_pages)])
         sqlite_connection.commit()
     else:
         all_pages_str = [
@@ -621,12 +631,10 @@ if __name__ == '__main__':
         page_handler.work()
         # 保存mdict源文件内容
         save_content()
-        sqlite_connection.execute('UPDATE process set id=-1')
-        sqlite_connection.commit()
+        update_process_id(-1)
 
     # 下载图片
     download_image(site, image_quality)
-    sqlite_connection.execute('UPDATE process set id=0')
-    sqlite_connection.commit()
+    update_process_id(0)
 
     logger('Done', 'Done')
