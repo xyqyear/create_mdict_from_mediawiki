@@ -19,12 +19,24 @@ import io
 # 用于储存数据
 import sqlite3
 
-# 0是普通，1是debug
+# 网站地址
+site = 'https://thwiki.cc'
+# 是否使用代理
+use_proxy = True
+# 代理池服务器地址
+proxy_pool = '192.168.10.125:23333'
+# 日志输出模式:0是普通，1是debug
 debug_mode = 1
+# Test_mode
+test_mode = True
+
+# Test
+# moegirl:
+#site = 'https://zh.moegirl.org'
 
 
 def logger(content, debug):
-    with open('latest_log.txt','a',encoding='utf-8') as log_file:
+    with open('latest_log.txt', 'a', encoding='utf-8') as log_file:
         if debug_mode == 0 and content == '':
             return
         elif debug_mode == 1:
@@ -35,6 +47,17 @@ def logger(content, debug):
         log_info = '[{}]:\n'.format(time.asctime()) + log_info + '\n'
         print(log_info)
         log_file.write(log_info)
+
+
+# 获得一个代理地址
+def get_proxy():
+    proxy_address = requests.get('http://{}/get'.format(proxy_pool)).text
+    return proxy_address
+
+
+# 删除一个代理地址
+def delete_proxy(proxy_):
+    requests.get("http://{}/delete/?proxy={}".format(proxy_pool, proxy_))
 
 
 # mode不为0就处理斜杠否则处理斜杠。
@@ -89,8 +112,8 @@ def insert_content(content_list):
     )
 
     sqlite_connection.commit()
-    logger('','[insert_content]: sqlite_time:{}'\
-           .format(time.time()-b))
+    logger('', '[insert_content]: sqlite_time:{}'
+           .format(time.time() - b))
 
 
 # 用于在表中插入图片链接
@@ -114,7 +137,7 @@ def insert_img(image_url):
     )
 
     sqlite_connection.commit()
-    logger('', '[insert_img]: sqlite_time:{}'\
+    logger('', '[insert_img]: sqlite_time:{}'
            .format(time.time() - b))
 
 
@@ -128,7 +151,7 @@ def get_content_from_db(content_id):
             [content_id]
         )][0]
 
-    logger('', '[get_content_from_db]: content_id:{}\nsqlite_time:{}'\
+    logger('', '[get_content_from_db]: content_id:{}\nsqlite_time:{}'
            .format(content_id, time.time() - b))
     return content_tuple
 
@@ -142,7 +165,7 @@ def get_image_url_from_db(image_id):
             'SELECT url FROM images WHERE id == (?)',
             [image_id]
         )][0]
-    logger('', '[get_image_url_from_db]: image_id:{}\nsqlite_time:{}'\
+    logger('', '[get_image_url_from_db]: image_id:{}\nsqlite_time:{}'
            .format(image_id, time.time() - b))
     return image_tuple[0]
 
@@ -179,13 +202,30 @@ class AllPagesGetter:
         # 获得索引页的源代码
         # all_pages_soup 是此页所有的wiki页面的源码
         # nav_tags_soup 是上一页下一页的导航
-        while True:
-            try:
-                page_source = requests.get(list_page, timeout=20).text
-                break
-            except Exception as e:
-                logger('获取{}错误,五秒后重试。'.format(list_page), str(e))
-                time.sleep(3)
+        if use_proxy:
+            while True:
+                proxy = get_proxy()
+                try:
+                    page_source = requests.get(
+                        list_page,
+                        timeout=20,
+                        proxies={'http': 'http://{}'.format(proxy),
+                                 'https': 'http://{}'.format(proxy)}
+                    ).text
+                    break
+                except Exception as e:
+                    logger('获取{}错误,重试。'.format(list_page), str(e))
+                    if 'Cannot connect to proxy' in str(e) or \
+                            'Connection aborted' in str(e):
+                        delete_proxy(proxy)
+        else:
+            while True:
+                try:
+                    page_source = requests.get(list_page, timeout=20).text
+                    break
+                except Exception as e:
+                    logger('获取{}错误,五秒后重试。'.format(list_page), str(e))
+                    time.sleep(3)
 
         soup = BeautifulSoup(page_source, 'lxml')
         all_pages_soup = soup.find(class_='mw-allpages-chunk')
@@ -220,9 +260,9 @@ class AllPagesGetter:
             # 下一页的链接就取最后一个
             next_page_url = nav_urls[-1]
 
-        # Test
-        # if self.pages > 0:
-        #   return
+        if test_mode:
+            if self.pages > 0:
+                return
 
         # 这里使用一个迭代要方便些
         self.get_pages_from_list(next_page_url)
@@ -242,15 +282,40 @@ class PageHandler:
 
         # 获得网页源码
         content_source = str()
-        retry_count = 4
-        while retry_count>0:
-            try:
-                content_source = requests.get(page_url, timeout=20).text
-                break
-            except BaseException as e:
-                retry_count -= 1
-                logger(page_url + '  获取失败，重试剩余{}次'.format(retry_count), str(e))
-                time.sleep(3)
+        # 如果使用代理
+        if use_proxy:
+            retry_count = 6
+            while retry_count > 0:
+                proxy = get_proxy()
+                try:
+                    content_source = requests.get(
+                        page_url,
+                        timeout=20,
+                        proxies={'http': 'http://{}'.format(proxy),
+                                 'https': 'http://{}'.format(proxy)}
+                    ).text
+                    break
+                except BaseException as e:
+                    retry_count -= 1
+                    logger(page_url + '获取失败，重试剩余{}次'
+                           .format(retry_count), str(e))
+                    if 'Cannot connect to proxy' in str(e) or \
+                            'Connection aborted' in str(e):
+                        delete_proxy(proxy)
+                        retry_count += 1
+        # 如果不使用
+        else:
+            retry_count = 4
+            while retry_count > 0:
+                try:
+                    content_source = requests.get(page_url, timeout=20).text
+                    break
+                except BaseException as e:
+                    retry_count -= 1
+                    logger(page_url + '  获取失败，重试剩余{}次'
+                           .format(retry_count), str(e))
+                    time.sleep(3)
+
         if retry_count == 0:
             return
 
@@ -271,7 +336,8 @@ class PageHandler:
 
         # 如果此页面是重定向来的，内容就是'@@@LINK=' + title
         if redirected_from:
-            logger('{}\n此页面是重定向过来的，正在添加重定向标志'.format(title), 'no debug info')
+            logger('{}\n此页面是重定向过来的，正在添加重定向标志'
+                   .format(title), 'no debug info')
             insert_content([
                 redirected_from.find(title=True)['title'],
                 '@@@LINK=' + title])
@@ -323,12 +389,12 @@ class PageHandler:
             self.get_content(url)
             logger(
                 '正在获取\n{}\n剩余页面:{}'.format(
-                    url,len(self.all_pages) - i),
-                    'no debug info')
+                    url, len(self.all_pages) - i),
+                'no debug info')
             i += 1
-            # Test
-            # if i == 200:
-            #   break
+            if test_mode:
+                if i == 10:
+                    break
 
 
 # 下载图片
@@ -382,26 +448,54 @@ def download_image(main_site, quality):
             '正在保存{}\n剩余{}张'.format(
                 img_name,
                 images_last),
-            img_original_url +
-            img_file_path)
+            img_original_url + '\nfile:' + img_file_path)
         # 如果目录不存在就创建
         if not os.path.exists(img_forth_path):
             os.makedirs(img_forth_path)
 
         # 尝试获取图片。
         img_requests = None
-        retry_count = 4
-        while retry_count>0:
-            try:
-                img_requests = requests.get(img_url, timeout=30)
-                if not img_requests.ok:
-                    retry_count = 0
+        # 如果使用代理
+        if use_proxy:
+            retry_count = 6
+            while retry_count > 0:
+                proxy = get_proxy()
+                try:
+                    img_requests = requests.get(
+                        img_url,
+                        timeout=30,
+                        proxies={'http': 'http://{}'.format(proxy),
+                                 'https': 'http://{}'.format(proxy)}
+                    )
+                    if not img_requests.ok:
+                        retry_count = 0
+                        break
                     break
-                break
-            except Exception as e:
-                retry_count -= 1
-                logger(img_name + '获取失败，重试第{}次'.format(retry_count), str(e))
-                time.sleep(3)
+                except Exception as e:
+                    retry_count -= 1
+                    logger(img_name + '获取失败，重试第{}次'
+                           .format(retry_count), str(e))
+                    if 'Cannot connect to proxy' in str(e) or \
+                            'Connection aborted' in str(e):
+                        delete_proxy(proxy)
+                        retry_count += 1
+
+        # 如果不使用代理
+        else:
+            retry_count = 4
+            while retry_count > 0:
+                try:
+                    img_requests = requests.get(img_url, timeout=30)
+                    if not img_requests.ok:
+                        retry_count = 0
+                        break
+                    break
+                except Exception as e:
+                    retry_count -= 1
+                    logger(img_name + '获取失败，重试第{}次'
+                           .format(retry_count), str(e))
+                    time.sleep(3)
+
         if retry_count == 0:
             continue
 
@@ -432,13 +526,6 @@ def save_content():
 
 
 if __name__ == '__main__':
-    # Test
-    # moegirl:
-    #site = 'https://zh.moegirl.org'
-
-    # thwiki:
-    site = 'https://thwiki.cc'
-
     all_pages_page = site + '/Special:Allpages'
     # 下载图片质量，因为wiki图片很多，所以要压缩一下。
     image_quality = 50

@@ -20,9 +20,14 @@
 
 主文件
 
-修改以下两行来匹配为其他mediawiki
+修改以下一行来匹配为其他mediawiki
 
 	site = 'https://thwiki.cc'
+
+修改以下两行来决定是否使用代理以及添加代理框架的API
+
+    use_proxy = True
+    proxy_pool = '192.168.10.125:23333'
 	
 site就是此wiki的域名，前面要加上http或者https
 
