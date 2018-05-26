@@ -535,6 +535,8 @@ class PageHandler:
 # 下载图片
 def download_image(main_site, quality):
     image_the_last_id = get_the_last_id_from_table('images')
+    processed_this_time = 0
+    start_time = 0
     for i in range(1, image_the_last_id + 1):
 
         images_last = image_the_last_id - i
@@ -552,6 +554,7 @@ def download_image(main_site, quality):
 
         # 如果这三种情况都不是的话就跳过这张图片
         else:
+            processed_this_time += 1
             continue
 
         # 这个是文件的相对路径
@@ -577,6 +580,7 @@ def download_image(main_site, quality):
         # 如果这张图片已经存在就跳过
         if os.path.exists(img_file_path):
             logger('{}已经存在，跳过。'.format(img_name), 'no debug info')
+            processed_this_time += 1
             continue
 
         logger(
@@ -632,6 +636,7 @@ def download_image(main_site, quality):
                     time.sleep(3)
 
         if retry_count == 0:
+            processed_this_time += 1
             continue
 
         # 打开图片，并且处理图片为RGB模式，省空间
@@ -643,8 +648,18 @@ def download_image(main_site, quality):
             img_rgb.save(img_file_path, quality=quality)
         except Exception as e:
             logger('保存图片{}失败,放弃。'.format(img_name), str(e))
+            processed_this_time += 1
             continue
 
+        # 计算平均时间
+        processed_this_time += 1
+        average_time = ((time.time() - start_time)
+                        / processed_this_time)
+        logger('[average_time]:{}'.format(average_time))
+
+        # 计算预计剩余时间
+        logger('[left_time]:{} hours'
+               .format(i * average_time / 3600))
 
 # 保存mdict源文件内容
 def save_content():
