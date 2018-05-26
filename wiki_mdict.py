@@ -35,7 +35,13 @@ test_mode = True
 #site = 'https://zh.moegirl.org'
 
 
-def logger(content, debug):
+def logger(content, debug='no debug info'):
+    """
+    日志输出器
+    :param content: 日志内容
+    :param debug: debug内容
+    :return: 
+    """
     with open('latest_log.txt', 'a', encoding='utf-8') as log_file:
         if debug_mode == 0 and content == '':
             return
@@ -51,19 +57,31 @@ def logger(content, debug):
         log_file.write(log_file_info)
 
 
-# 获得一个代理地址
 def get_proxy():
+    """
+    # 获得一个代理地址
+    :return: 代理地址
+    """
     proxy_address = requests.get('http://{}/get'.format(proxy_pool)).text
     return proxy_address
 
 
-# 删除一个代理地址
 def delete_proxy(proxy_):
+    """
+    # 删除一个代理地址
+    :param proxy_: 
+    :return: 
+    """
     requests.get("http://{}/delete/?proxy={}".format(proxy_pool, proxy_))
 
 
-# mode不为0就处理斜杠否则处理斜杠。
 def handle_file_name(string, mode=0):
+    """
+    用于处理文件名敏感的字符串
+    :param string: 需要处理的字符串
+    :param mode: 不为0就处理斜杠否则处理斜杠。
+    :return: 
+    """
     if mode == 0:
         return string\
             .replace('"', '_').replace('<', '_') \
@@ -78,8 +96,12 @@ def handle_file_name(string, mode=0):
             .replace(':', '_').replace('?', '_').replace('*', '_')
 
 
-# 用于获取数据库对象
 def new_db_file(site_url):
+    """
+    用于获取数据库对象
+    :param site_url:网站链接 
+    :return: 数据库链接对象
+    """
     handled_site_name = handle_file_name(site_url, 1)
     sqlite_file_name = handle_file_name(handled_site_name) + '.db'
     sqlite_file_path = os.path.join(os.path.abspath('.'), sqlite_file_name)
@@ -104,9 +126,12 @@ def new_db_file(site_url):
     return sqlite_con
 
 
-# 用于在表中插入内容
-# content_list: 0标题 1内容 2日期
 def insert_content(content_list):
+    """
+    用于在表中插入内容
+    :param content_list: 0标题 1内容 2日期
+    :return: 
+    """
     b = time.time()
 
     # 检测title是否存在，如果存在就更新，不存在就插入
@@ -130,13 +155,16 @@ def insert_content(content_list):
             [last_id + 1, content_list[0], content_list[1], content_list[2]]
         )
 
-    sqlite_connection.commit()
     logger('', '[insert_content]: sqlite_time:{}'
            .format(time.time() - b))
 
 
-# 用于在表中插入图片链接
 def insert_img(image_url):
+    """
+    用于在表中插入图片链接
+    :param image_url: 图片链接
+    :return: 
+    """
     b = time.time()
     # 判断链接是否存在于images表中
     select_list = [
@@ -155,13 +183,17 @@ def insert_img(image_url):
         [last_id + 1, image_url]
     )
 
-    sqlite_connection.commit()
     logger('', '[insert_img]: sqlite_time:{}'
            .format(time.time() - b))
 
 
-# 用于判断页面是否是最新
 def is_content_up2date(title, date_text):
+    """
+    用于判断页面是否是最新
+    :param title: 页面标题
+    :param date_text: 日期信息
+    :return: 返回的布尔值表示是否为最新的
+    """
     b = time.time()
 
     # 判断title是否存在
@@ -180,19 +212,25 @@ def is_content_up2date(title, date_text):
     return False
 
 
-# 更新进程id
 def update_process_id(pro_id):
+    """
+    更新目前工作进程id
+    :param pro_id: 工作进程id
+    :return: 
+    """
     b = time.time()
     sqlite_connection.execute('UPDATE process set id=(?)', [pro_id])
-    sqlite_connection.commit()
     logger('', '[update_process_id]:sqlite_time:{}'
            .format(time.time() - b)
            )
 
 
-# 从数据库中获取内容
-# 返回(title, content)形式的元组
 def get_content_from_db(content_id):
+    """
+    从数据库中获取内容
+    :param content_id: 页面id
+    :return: (title, content)形式的元组
+    """
     b = time.time()
     content_tuple = [
         c for c in sqlite_connection.execute(
@@ -205,9 +243,12 @@ def get_content_from_db(content_id):
     return content_tuple
 
 
-# 从数据库中获取图片链接
-# 返回图片url
 def get_image_url_from_db(image_id):
+    """
+    从数据库中获取图片链接
+    :param image_id: 图片id
+    :return: 图片url
+    """
     b = time.time()
     image_tuple = [
         c for c in sqlite_connection.execute(
@@ -219,9 +260,13 @@ def get_image_url_from_db(image_id):
     return image_tuple[0]
 
 
-# 获取表中最后一个id，如果没有就是0
-# 输入的值是表名
 def get_the_last_id_from_table(table):
+    """
+    获取表中最后一个id，如果没有就是0
+    :param table: 表名
+    :return: 最后一个id
+    """
+    b = time.time()
     last_id_list = [
         id_ for id_ in sqlite_connection.execute(
             'SELECT id FROM {} ORDER BY id DESC LIMIT 1'
@@ -231,6 +276,8 @@ def get_the_last_id_from_table(table):
         last_id = 0
     else:
         last_id = last_id_list[0][0]
+    logger('', '[get_the_last_id_from_table]:sqlite_time:{}'
+           .format(time.time() - b))
     return last_id
 
 
@@ -330,7 +377,6 @@ class PageHandler:
         return '<a class="mw-headline" id=' + got.group(1) + '</a>'
 
     def get_content(self, page_url):
-
         # 获得网页源码
         content_source = str()
         # 如果使用代理
@@ -454,6 +500,7 @@ class PageHandler:
     def work(self):
         # 从直接for url改成for int，为断点续传做准备
         for i in range(self.process, len(self.all_pages)):
+
             url = self.all_pages[i]
             logger(
                 '正在获取\n{}\n剩余页面:{}'.format(
@@ -461,6 +508,13 @@ class PageHandler:
                 'no debug info')
             self.get_content(url)
             update_process_id(i)
+
+            # 每20个页面commit一次试试
+            if i % 20 == 0:
+                b = time.time()
+                sqlite_connection.commit()
+                logger('', '[PageHandler.work]:[sqlite_commit_time]:{}'
+                       .format(time.time() - b))
             if test_mode:
                 if i == 20:
                     break
@@ -629,6 +683,7 @@ if __name__ == '__main__':
         page_handler = PageHandler(all_pages)
         page_handler.process = process_id
         page_handler.work()
+        sqlite_connection.commit()
         # 保存mdict源文件内容
         save_content()
         update_process_id(-1)
