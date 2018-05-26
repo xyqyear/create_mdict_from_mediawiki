@@ -371,6 +371,8 @@ class PageHandler:
         # 用于设置目前的页面处理进程
         self.process = 0
         # [标题:处理好的内容源码,...]
+        self.processed_this_time = 0
+        self.start_time = time.time()
 
     @staticmethod
     def rep_method(got):
@@ -498,7 +500,6 @@ class PageHandler:
         insert_content([title, main_content_source, date_text])
 
     def work(self):
-        # 从直接for url改成for int，为断点续传做准备
         for i in range(self.process, len(self.all_pages)):
 
             url = self.all_pages[i]
@@ -515,6 +516,17 @@ class PageHandler:
                 sqlite_connection.commit()
                 logger('', '[PageHandler.work]:[sqlite_commit_time]:{}'
                        .format(time.time() - b))
+
+            # 计算本次消耗的时间并计算平均时间
+            self.processed_this_time += 1
+            average_time = ((time.time() - self.start_time)
+                           /self.processed_this_time)
+            logger('[average_time]:{}'.format(average_time))
+
+            # 计算预计剩余时间
+            logger('[left_time]:{} hours'
+                   .format(i*average_time/3600))
+
             if test_mode:
                 if i == 20:
                     break
