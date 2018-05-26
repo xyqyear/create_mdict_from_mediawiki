@@ -418,6 +418,7 @@ class PageHandler:
         if retry_count == 0:
             return
 
+        logger('获取页面成功')
         # 获得标题，如果没有标题就跳过
         title_list = re.findall(
             r'<h1 id="firstHeading" class="firstHeading" lang=".*">(.*)</h1>',
@@ -525,7 +526,7 @@ class PageHandler:
 
             # 计算预计剩余时间
             logger('[left_time]:{} hours'
-                   .format(i*average_time/3600))
+                   .format((len(self.all_pages)-i)*average_time/3600))
 
             if test_mode:
                 if i == 20:
@@ -659,7 +660,7 @@ def download_image(main_site, quality):
 
         # 计算预计剩余时间
         logger('[left_time]:{} hours'
-               .format(i * average_time / 3600))
+               .format(image_the_last_id - i * average_time / 3600))
 
 # 保存mdict源文件内容
 def save_content():
