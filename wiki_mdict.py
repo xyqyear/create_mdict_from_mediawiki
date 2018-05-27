@@ -381,6 +381,7 @@ class PageHandler:
     def get_content(self, page_url):
         # 获得网页源码
         content_source = str()
+
         # 如果使用代理
         if use_proxy:
             retry_count = 6
@@ -414,22 +415,27 @@ class PageHandler:
                     logger(page_url + '  获取失败，重试剩余{}次'
                            .format(retry_count), str(e))
                     time.sleep(3)
-
         if retry_count == 0:
             return
 
         logger('获取页面成功')
+
         # 获得标题，如果没有标题就跳过
         title_list = re.findall(
             r'<h1 id="firstHeading" class="firstHeading" lang=".*">(.*)</h1>',
             content_source
         )
         if title_list:
-            # 如果标题是数字，get_text就会返回一个int，这样子下面处理就会出问题
             title = title_list[0]
         else:
             logger('此页面没有内容，跳过', 'no debug info')
             return
+
+        # 获得重定向，如果有就添加重定向
+        redirected_from_list = re.findall(
+            r'<a href=.* class="mw-redirect" title="(.*)">.*</a>',
+            content_source
+        )
 
         # 页面修改日期,用于判断页面是否更新
         mod_date = re.findall(
@@ -438,28 +444,29 @@ class PageHandler:
         )
         if mod_date:
             date_text = mod_date[0]
-            is_up2date = is_content_up2date(title, date_text)
-            if is_up2date:
-                logger('此页面是最新的，跳过。', 'no debug info')
-                return
         else:
             date_text = 'None'
 
-        soup = BeautifulSoup(content_source, 'lxml')
-        main_content_source_soup = soup.find(id='mw-content-text')
-        main_content_source = str(main_content_source_soup)
-        redirected_from = soup.find(class_='mw-redirectedfrom')
-
-        # 如果此页面是重定向来的，内容就是'@@@LINK=' + title
-        if redirected_from:
+        if redirected_from_list:
+            redirected_from = redirected_from_list[0]
             logger('{}\n此页面是重定向过来的，正在添加重定向标志'
                    .format(title), 'no debug info')
             insert_content([
-                redirected_from.find(title=True)['title'],
+                redirected_from,
                 '@@@LINK=' + title,
                 date_text
             ])
             return
+
+        # 如果不是重定向，页面又是最新的，就跳过
+        is_up2date = is_content_up2date(title, date_text)
+        if is_up2date:
+            logger('此页面是最新的，跳过。', 'no debug info')
+            return
+
+        soup = BeautifulSoup(content_source, 'lxml')
+        main_content_source_soup = soup.find(id='mw-content-text')
+        main_content_source = str(main_content_source_soup)
 
         # 替换链接为key
         links = main_content_source_soup.find_all(href=True, title=True)
