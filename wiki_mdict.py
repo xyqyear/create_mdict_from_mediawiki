@@ -24,7 +24,7 @@ site = 'https://thwiki.cc'
 # API地址
 api_address = 'https://thwiki.cc/api.php'
 # 是否使用API
-is_using_api = True
+is_using_api = False
 # 是否使用代理
 use_proxy = True
 # 代理池服务器地址
