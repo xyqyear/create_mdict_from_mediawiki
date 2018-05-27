@@ -494,7 +494,7 @@ class PageHandler:
 
         # 获得重定向，如果有就添加重定向
         redirected_from_list = re.findall(
-            r'<a href=.* class="mw-redirect" title="(.*)">.*</a>',
+            r'<span class="mw-redirectedfrom">.*<a href=".*" class="mw-redirect" title="(.*)">.*</a>.*</span>',
             content_source
         )
 
