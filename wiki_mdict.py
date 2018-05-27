@@ -489,7 +489,7 @@ class PageHandler:
         if title_list:
             title = title_list[0]
         else:
-            logger('此页面没有内容，跳过', 'no debug info')
+            logger('此页面没有内容，跳过')
             return
 
         # 获得重定向，如果有就添加重定向
@@ -511,7 +511,7 @@ class PageHandler:
         if redirected_from_list:
             redirected_from = redirected_from_list[0]
             logger('{}\n此页面是重定向过来的，正在添加重定向标志'
-                   .format(title), 'no debug info')
+                   .format(title))
             insert_content([
                 redirected_from,
                 '@@@LINK=' + title,
@@ -522,7 +522,7 @@ class PageHandler:
         # 如果不是重定向，页面又是最新的，就跳过
         is_up2date = is_content_up2date(title, date_text)
         if is_up2date:
-            logger('此页面是最新的，跳过。', 'no debug info')
+            logger('此页面是最新的，跳过。')
             return
 
         # 处理源码以及添加图片
@@ -539,10 +539,8 @@ class PageHandler:
         for i in range(self.process, len(self.all_pages)):
 
             url = self.all_pages[i]
-            logger(
-                '正在获取\n{}\n剩余页面:{}'.format(
-                    url, len(self.all_pages) - i),
-                'no debug info')
+            logger('正在获取\n{}\n剩余页面:{}'
+                   .format(url, len(self.all_pages) - i))
             self.get_content(url)
             update_process_id(i)
 
@@ -620,7 +618,7 @@ def download_image(main_site, quality):
 
         # 如果这张图片已经存在就跳过
         if os.path.exists(img_file_path):
-            logger('{}已经存在，跳过。'.format(img_name), 'no debug info')
+            logger('{}已经存在，跳过。'.format(img_name))
             processed_this_time += 1
             continue
 
