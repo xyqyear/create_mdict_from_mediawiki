@@ -21,6 +21,10 @@ import sqlite3
 
 # 网站地址
 site = 'https://thwiki.cc'
+# API地址
+api_address = 'https://thwiki.cc/api.php'
+# 是否使用API
+is_using_api = True
 # 是否使用代理
 use_proxy = True
 # 代理池服务器地址
@@ -363,6 +367,9 @@ class AllPagesGetter:
         # 这里使用一个迭代要方便些
         self.get_pages_from_list(next_page_url)
 
+    # TODO
+    def get_pages_from_list_with_api(self):
+        pass
 
 # 差不多已经完工
 class PageHandler:
@@ -378,29 +385,75 @@ class PageHandler:
     def rep_method(got):
         return '<a class="mw-headline" id=' + got.group(1) + '</a>'
 
-    def get_content(self, page_url):
-        # 获得网页源码
-        content_source = str()
+    def handle_content(self, content_source):
+        soup = BeautifulSoup(content_source, 'lxml')
+        if is_using_api:
+            main_content_source_soup = soup
+            main_content_source = content_source
+        else:
+            main_content_source_soup = soup.find(id='mw-content-text')
+            main_content_source = str(main_content_source_soup)
 
+        # 替换链接为key
+        links = main_content_source_soup.find_all(href=True, title=True)
+        for link in links:
+            main_content_source = main_content_source.replace(
+                'href="' + link['href'], 'href="' + 'entry://{}'.format(link['title']))
+
+        # 替换section为mdict格式
+        main_content_source = main_content_source.replace(
+            'href="#', 'href="entry://#')
+        main_content_source = re.sub(
+            r'<span class="mw-headline" id=(.*)</span>',
+            self.rep_method,
+            main_content_source)
+
+        # 寻找图片
+        img_tags = main_content_source_soup.find_all('img', src=True)
+        for img in img_tags:
+            # 这里也处理一下图片src
+            # 1.unquote
+            # 2.替换windows文件名敏感字符
+            # 3.替换后缀名
+            # 4.替换路径为本地路径
+            img_replace = urllib.parse.unquote(img['src'])
+            img_replace = handle_file_name(img_replace)
+            img_replace = img_replace \
+                .replace('.png', '.jpg') \
+                .replace('.gif', '.jpg') \
+                .replace('.jpeg', '.jpg') \
+                .replace('https://', '/') \
+                .replace('http://', '/') \
+                .replace('//', '/')
+
+            main_content_source = main_content_source \
+                .replace(img['src'], img_replace)
+            insert_img(img['src'])
+
+        return main_content_source
+
+    @staticmethod
+    def get_response(url):
+        content_response = False
         # 如果使用代理
         if use_proxy:
             retry_count = 6
             while retry_count > 0:
                 proxy = get_proxy()
                 try:
-                    content_source = requests.get(
-                        page_url,
+                    content_response = requests.get(
+                        url,
                         timeout=20,
                         proxies={'http': 'http://{}'.format(proxy),
                                  'https': 'http://{}'.format(proxy)}
-                    ).text
+                    )
                     break
                 except BaseException as e:
                     retry_count -= 1
-                    logger(page_url + '获取失败，重试剩余{}次'
+                    logger(url + '获取失败，重试剩余{}次'
                            .format(retry_count), str(e))
                     if 'Cannot connect to proxy' in str(e) or \
-                            'Connection aborted' in str(e):
+                                    'Connection aborted' in str(e):
                         delete_proxy(proxy)
                         retry_count += 1
         # 如果不使用
@@ -408,17 +461,25 @@ class PageHandler:
             retry_count = 4
             while retry_count > 0:
                 try:
-                    content_source = requests.get(page_url, timeout=20).text
+                    content_response = requests.get(url, timeout=20)
                     break
                 except BaseException as e:
                     retry_count -= 1
-                    logger(page_url + '  获取失败，重试剩余{}次'
+                    logger(url + '  获取失败，重试剩余{}次'
                            .format(retry_count), str(e))
                     time.sleep(3)
-        if retry_count == 0:
-            return
+        return content_response
 
-        logger('获取页面成功')
+    def get_content(self, page_url):
+        # 获得网页源码
+        content_response = self.get_response(page_url)
+
+        if content_response:
+            content_source = content_response.text
+            logger('获取页面成功')
+        else:
+            logger('获取页面失败')
+            return
 
         # 获得标题，如果没有标题就跳过
         title_list = re.findall(
@@ -464,48 +525,15 @@ class PageHandler:
             logger('此页面是最新的，跳过。', 'no debug info')
             return
 
-        soup = BeautifulSoup(content_source, 'lxml')
-        main_content_source_soup = soup.find(id='mw-content-text')
-        main_content_source = str(main_content_source_soup)
-
-        # 替换链接为key
-        links = main_content_source_soup.find_all(href=True, title=True)
-        for link in links:
-            main_content_source = main_content_source.replace(
-                'href="' + link['href'], 'href="' + 'entry://{}'.format(link['title']))
-
-        # 替换section为mdict格式
-        main_content_source = main_content_source.replace(
-            'href="#', 'href="entry://#')
-        main_content_source = re.sub(
-            r'<span class="mw-headline" id=(.*)</span>',
-            self.rep_method,
-            main_content_source)
-
-        # 寻找图片
-        img_tags = main_content_source_soup.find_all('img', src=True)
-        for img in img_tags:
-            # 这里也处理一下图片src
-            # 1.unquote
-            # 2.替换windows文件名敏感字符
-            # 3.替换后缀名
-            # 4.替换路径为本地路径
-            img_replace = urllib.parse.unquote(img['src'])
-            img_replace = handle_file_name(img_replace)
-            img_replace = img_replace\
-                .replace('.png', '.jpg')\
-                .replace('.gif', '.jpg')\
-                .replace('.jpeg', '.jpg') \
-                .replace('https://', '/')\
-                .replace('http://', '/') \
-                .replace('//', '/')
-
-            main_content_source = main_content_source\
-                .replace(img['src'], img_replace)
-            insert_img(img['src'])
+        # 处理源码以及添加图片
+        main_content_source = self.handle_content(content_source)
 
         # 添加内容到self.contents当中
         insert_content([title, main_content_source, date_text])
+
+    # TODO
+    def get_content_with_api(self, page_url):
+        pass
 
     def work(self):
         for i in range(self.process, len(self.all_pages)):
@@ -535,16 +563,21 @@ class PageHandler:
             logger('[left_time]:{} hours'
                    .format((len(self.all_pages)-i)*average_time/3600))
 
+            time.sleep(2)
+
             if test_mode:
                 if i == 20:
                     break
 
+    # TODO
+    def work_with_api(self):
+        pass
 
 # 下载图片
 def download_image(main_site, quality):
     image_the_last_id = get_the_last_id_from_table('images')
     processed_this_time = 0
-    start_time = 0
+    start_time = time.time()
     for i in range(1, image_the_last_id + 1):
 
         images_last = image_the_last_id - i
@@ -668,6 +701,8 @@ def download_image(main_site, quality):
         # 计算预计剩余时间
         logger('[left_time]:{} hours'
                .format(image_the_last_id - i * average_time / 3600))
+
+        time.sleep(2)
 
 # 保存mdict源文件内容
 def save_content():
