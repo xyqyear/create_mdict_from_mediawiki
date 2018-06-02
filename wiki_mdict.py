@@ -26,7 +26,7 @@ api_address = 'https://thwiki.cc/api.php'
 # 是否使用API
 is_using_api = False
 # 是否使用代理
-use_proxy = True
+use_proxy = False
 # 代理池服务器地址
 proxy_pool = '192.168.10.125:23333'
 # 日志输出模式:0是普通，1是debug
@@ -285,23 +285,10 @@ def get_the_last_id_from_table(table):
     return last_id
 
 
-# 用于获得所有页面
-# 已经完工，估计没有什么bug
-class AllPagesGetter:
-    def __init__(self, main_site, all_pages_page_):
-        self.site = main_site
-        self.all_pages_page = all_pages_page_
-        self.all_pages = list()
-        self.pages = 0
-
-        # 初始化时就开始执行函数
-        self.get_pages_from_list(self.all_pages_page)
-
-    def get_pages_from_list(self, list_page):
-
-        # 获得索引页的源代码
-        # all_pages_soup 是此页所有的wiki页面的源码
-        # nav_tags_soup 是上一页下一页的导航
+def get_pages_from_list(list_page):
+    pages = 0
+    all_pages_list = list()
+    while list_page is not False:
         if use_proxy:
             while True:
                 proxy = get_proxy()
@@ -335,7 +322,7 @@ class AllPagesGetter:
         relative_urls = all_pages_soup.find_all(href=True)
         urls = list()
         for single_href in relative_urls:
-            urls.append(self.site + urllib.parse.unquote(
+            urls.append(site + urllib.parse.unquote(
                 single_href['href'],
                 encoding='utf-8'))
 
@@ -343,33 +330,27 @@ class AllPagesGetter:
         nav_tags = nav_tags_soup.find_all(href=True)
         nav_urls = list()
         for single_nav_tag in nav_tags:
-            nav_urls.append(self.site + single_nav_tag['href'])
+            nav_urls.append(site + single_nav_tag['href'])
 
-        self.all_pages += urls
-        self.pages += 1
+        all_pages_list += urls
+        pages += 1
         logger(' | '.join(['获取所有页面...',
-                           '第{}页'.format(self.pages),
-                           '已经抓取{}个词条'.format(len(self.all_pages))]),
+                           '第{}页'.format(pages),
+                           '已经抓取{}个词条'.format(len(all_pages_list))]),
                ' | '.join([nav_urls[0]]))
 
         # 如果导航栏的链接只有一个(也就是只有上一页或者下一页)而且当前页面不是初始页面
         # 这样就能保证是最后一页
-        if len(nav_urls) == 1 and list_page is not self.all_pages_page:
+        if len(nav_urls) == 1 and list_page is not all_pages_page:
             return
         else:
             # 下一页的链接就取最后一个
-            next_page_url = nav_urls[-1]
+            list_page = nav_urls[-1]
 
         if test_mode:
-            if self.pages > 0:
-                return
-
-        # 这里使用一个迭代要方便些
-        self.get_pages_from_list(next_page_url)
-
-    # TODO
-    def get_pages_from_list_with_api(self):
-        pass
+            if pages > 0:
+                return all_pages_list
+    return all_pages_list
 
 # 差不多已经完工
 class PageHandler:
@@ -698,7 +679,7 @@ def download_image(main_site, quality):
 
         # 计算预计剩余时间
         logger('[left_time]:{} hours'
-               .format(image_the_last_id - i * average_time / 3600))
+               .format((image_the_last_id - i) * average_time / 3600))
 
         time.sleep(2)
 
@@ -731,8 +712,7 @@ if __name__ == '__main__':
     ][0]
     # 如果未获取所有页面就获取所有页面
     if process_id == 0:
-        pages_getter = AllPagesGetter(site, all_pages_page)
-        all_pages = pages_getter.all_pages
+        all_pages = get_pages_from_list(all_pages_page)
         sqlite_connection.execute(
             'UPDATE process set all_pages=(?)', [
                 str(all_pages)])
