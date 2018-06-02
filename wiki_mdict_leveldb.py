@@ -166,7 +166,7 @@ def db_get(db, key):
         return False
 
 
-def get_pages_from_list():
+def get_all_titles():
     """
     获取所有页面
     """
@@ -253,6 +253,11 @@ class PageHandler:
         return '<a class="mw-headline" id=' + got.group(1) + '</a>'
 
     def handle_content(self, content_source):
+        """
+        处理维基网页源码并且向数据库插入图片
+        :param content_source: 维基内容源代码
+        :return: 处理好的源码
+        """
         soup = BeautifulSoup(content_source, 'lxml')
         if is_using_api:
             main_content_source_soup = soup
@@ -300,7 +305,13 @@ class PageHandler:
         return main_content_source
 
     @staticmethod
-    def get_response(title):
+    def get_response(url):
+        """
+        get一个url
+        集成了重试和使用代理的功能
+        :param url: 
+        :return: 如果失败了就返回False，成功了就返回requests Response对象
+        """
         content_response = False
         # 如果使用代理
         if use_proxy:
@@ -309,7 +320,7 @@ class PageHandler:
                 proxy = get_proxy()
                 try:
                     content_response = requests.get(
-                        title,
+                        url,
                         timeout=20,
                         proxies={'http': 'http://{}'.format(proxy),
                                  'https': 'http://{}'.format(proxy)}
@@ -317,7 +328,7 @@ class PageHandler:
                     break
                 except BaseException as e:
                     retry_count -= 1
-                    logger(title + '获取失败，重试剩余{}次'
+                    logger(url + '获取失败，重试剩余{}次'
                            .format(retry_count), str(e))
                     if 'Cannot connect to proxy' in str(e) or \
                                     'Connection aborted' in str(e):
@@ -328,11 +339,11 @@ class PageHandler:
             retry_count = 4
             while retry_count > 0:
                 try:
-                    content_response = requests.get(title, timeout=20)
+                    content_response = requests.get(url, timeout=20)
                     break
                 except BaseException as e:
                     retry_count -= 1
-                    logger(title + '  获取失败，重试剩余{}次'
+                    logger(url + '  获取失败，重试剩余{}次'
                            .format(retry_count), str(e))
                     time.sleep(3)
         return content_response
@@ -404,6 +415,10 @@ class PageHandler:
         for title,stats in titles_db.RangeIter():
             title = title.decode('utf-8')
 
+            # 如果此页被处理过，就跳过
+            if json.loads(stats.decode('utf-8')):
+                continue
+
             logger('正在获取\n{}\n剩余页面:{}'
                    .format(title, self.page_num - i))
 
@@ -425,6 +440,12 @@ class PageHandler:
             if test_mode:
                 if i == 20:
                     break
+
+
+# TODO
+class UpdateChecker:
+    def __init__(self):
+        pass
 
 
 # 下载图片
@@ -573,7 +594,6 @@ def save_content():
 
 
 if __name__ == '__main__':
-    all_pages_page = site + '/Special:Allpages'
     # 下载图片质量，因为wiki图片很多，所以要压缩一下。
     image_quality = 50
 
@@ -581,7 +601,7 @@ if __name__ == '__main__':
     titles_db, contents_db, images_db = new_db_file()
 
     # 获得所有页面
-    get_pages_from_list()
+    get_all_titles()
 
     # 处理页面并获取图片链接，存入数据库中
     page_handler = PageHandler()
