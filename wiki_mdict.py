@@ -8,6 +8,7 @@ from PIL import Image
 import re
 import os
 import time
+import json
 import requests
 
 # 用于unquote
@@ -17,6 +18,7 @@ import urllib.parse
 import io
 
 # 用于储存数据
+import leveldb
 import sqlite3
 
 # 网站地址
@@ -100,6 +102,48 @@ def handle_file_name(string, mode=0):
             .replace(':', '_').replace('?', '_').replace('*', '_')
 
 
+# 以下是leveldb的函数
+def db_put(db, key, value):
+    """
+    向数据库添加数据
+    所有数据都会被转化为str并用utf-8编码为bytes，存入数据库
+    :param db: 数据库对象
+    :param key: 
+    :param value: 
+    :return: 
+    """
+    db.Put(str(key).encode('utf-8'), str(value).encode('utf-8'))
+
+
+def db_exist(db, key):
+    """
+    判断指定key是否存在
+    :param db: 
+    :param key: 
+    :return: 
+    """
+    try:
+        db.Get(str(key).encode('utf-8'))
+        return True
+    except KeyError:
+        return False
+
+
+def db_get(db, key):
+    """
+    从数据库获得数据
+    :param db: 
+    :param key: 
+    :return: 
+    """
+    try:
+        return db.Get(str(key).encode('utf-8')).decode('utf-8')
+    except Exception as e:
+        logger('从数据库获得键出错:{}'.format(str(e)))
+        return False
+
+
+# 以下是sqlite的函数
 def new_db_file(site_url):
     """
     用于获取数据库对象
@@ -286,6 +330,11 @@ def get_the_last_id_from_table(table):
 
 
 def get_pages_from_list(list_page):
+    """
+    获取所有页面
+    :param list_page: 索引页的第一页
+    :return: 所有页面的列表
+    """
     pages = 0
     all_pages_list = list()
     while list_page is not False:

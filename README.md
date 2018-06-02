@@ -43,6 +43,6 @@ site就是此wiki的域名，前面要加上http或者https\
 
 ### TODO
 
-- [ ] 重写AllPagesGetter
+- [x] 重写AllPagesGetter
 - [ ] 使用leveldb替换sqlite
 - [ ] 添加使用API爬取的支持
