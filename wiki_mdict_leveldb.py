@@ -22,28 +22,28 @@ import io
 import leveldb
 
 # 网站地址
-site = 'https://thwiki.cc'
+#site = 'https://thwiki.cc'
 # upload地址
-upload = 'upload.thwiki.cc'
-# Test
-#site = 'https://zh.moegirl.org'
-#upload = 'img.moegirl.org'
-# 是否是更新模式
-is_update_mode = False
+#upload = 'upload.thwiki.cc'
+# API地址
+#api_address = 'https://thwiki.cc/api.php'
+site = 'https://zh.moegirl.org'
+upload = 'img.moegirl.org'
+api_address = 'https://zh.moegirl.org/api.php'
 # 需要下载的namespaces
 # default:
-#namespaces = ['0']
+namespaces = ['0']
 # thwiki
-namespaces = ['0',  # 主
-              '4',  # THBWiki
-              '200',  # 用户wiki
-              '202',  # 用户资料
-              '506',  # 附带文档
-              '508',  # 游戏对话
-              '512',  # 歌词对话
-              ]
-# API地址
-api_address = 'https://thwiki.cc/api.php'
+#namespaces = ['0',  # 主
+#              '4',  # THBWiki
+#              '200',  # 用户wiki
+#              '202',  # 用户资料
+#              '506',  # 附带文档
+#              '508',  # 游戏对话
+#              '512',  # 歌词对话
+#              ]
+# 是否是更新模式
+is_update_mode = False
 # 是否使用代理
 use_proxy = False
 # 代理池服务器地址
@@ -234,7 +234,6 @@ def get_all_titles():
                                                 namespace=namespace)
 
             response = get_response(request_url, -1)
-            print(response)
             if response:
                 response_json = response.json()
             else:
@@ -350,6 +349,9 @@ class PageHandler:
         # 获得页面信息
         page_json = response_json['query']['pages']
         page_info = [value for key, value in page_json.items()][0]
+        if 'revisions' not in page_info:
+            print('no revisions')
+            return
         source = page_info['revisions'][0]['*']
         date = page_info['revisions'][0]['timestamp']
 
@@ -475,6 +477,7 @@ def download_image(main_site, quality):
     images_num = len([i for i in images_db.RangeIter()])
     start_time = time.time()
     for image, stats in images_db.RangeIter():
+        # 如果下载过了就不下了
         if json.loads(stats.decode()):
             continue
         img_original_url = image.decode()
@@ -530,51 +533,7 @@ def download_image(main_site, quality):
             os.makedirs(img_forth_path)
 
         # 尝试获取图片。
-        img_requests = None
-        # 如果使用代理
-        if use_proxy:
-            retry_count = 6
-            while retry_count > 0:
-                proxy = get_proxy()
-                try:
-                    img_requests = requests.get(
-                        img_url,
-                        timeout=30,
-                        proxies={'http': 'http://{}'.format(proxy),
-                                 'https': 'http://{}'.format(proxy)}
-                    )
-                    if not img_requests.ok:
-                        retry_count = 0
-                        break
-                    break
-                except Exception as e:
-                    retry_count -= 1
-                    logger(img_name + '获取失败，重试第{}次'
-                           .format(retry_count), str(e))
-                    if 'Cannot connect to proxy' in str(e) or \
-                            'Connection aborted' in str(e):
-                        delete_proxy(proxy)
-                        retry_count += 1
-
-        # 如果不使用代理
-        else:
-            retry_count = 4
-            while retry_count > 0:
-                try:
-                    img_requests = requests.get(img_url, timeout=30)
-                    if not img_requests.ok:
-                        retry_count = 0
-                        break
-                    break
-                except Exception as e:
-                    retry_count -= 1
-                    logger(img_name + '获取失败，重试第{}次'
-                           .format(retry_count), str(e))
-                    time.sleep(3)
-
-        if retry_count == 0:
-            id_ += 1
-            continue
+        img_requests = get_response(img_url)
 
         # 打开图片，并且处理图片为RGB模式，省空间
         # 不清楚为什么这里也会出错，不过姑且先加一个try吧
@@ -588,6 +547,7 @@ def download_image(main_site, quality):
             id_ += 1
             continue
 
+        db_put(images_db, image, [1])
         # 计算平均时间
         id_ += 1
         average_time = ((time.time() - start_time)

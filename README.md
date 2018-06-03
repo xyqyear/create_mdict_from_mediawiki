@@ -1,12 +1,15 @@
 # 从mediawiki创建mdict
 
-### 代码重写，尝试保存数据到sqlite文件.
+### 代码再次重写，尝试保存数据到leveldb.
 
 ## 依赖库:
 	
 	bs4
 	PIL(pillow)
 	requests
+	leveldb
+
+如果windows不能使用pip安装leveldb的可以尝试使用[这个](https://github.com/happynear/py-leveldb-windows/)
 
 ## 简介
 
@@ -14,22 +17,26 @@
 但是弄着弄着发现好像所有mediawiki的数据结构都差不多\
 于是就弄出这么个东西了
 
-获取所有页面是通过 site/Special:Allpages 这个页面来获得的\
-但是不保证所有mediawiki站点都支持此页面
+需要mediawiki支持api
 
 ### wiki_mdict.py
 
 主文件
 
-修改以下一行来匹配为其他mediawiki
+修改以下两行来匹配为其他mediawiki\
+upload是这个wiki的图片域名
 
 	site = 'https://thwiki.cc'
+    upload = 'upload.thwiki.cc'
 
 site就是此wiki的域名，前面要加上http或者https\
-修改以下两行选择是否使用mediawiki的api来获取数据(功能未做完，暂时无法使用)
+修改以下一行更改api地址
     
     api_address = 'https://thwiki.cc/api.php'
-    is_using_api = False
+
+如果已经完成一次爬取，下一次可以使用更新模式
+
+    is_update_mode = False
 
 修改以下两行来决定是否使用代理以及添加代理框架的API\
 代理框架是使用的[这个](https://github.com/jhao104/proxy_pool)\
@@ -44,5 +51,6 @@ site就是此wiki的域名，前面要加上http或者https\
 ### TODO
 
 - [x] 重写AllPagesGetter
-- [ ] 使用leveldb替换sqlite
-- [ ] 添加使用API爬取的支持
+- [x] 使用leveldb替换sqlite
+- [x] 添加使用API爬取的支持
+- [x] 支持仅更新，这样就不用每次都重新爬
