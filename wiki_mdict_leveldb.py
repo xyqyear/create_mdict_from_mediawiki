@@ -7,6 +7,7 @@ from PIL import Image
 
 import re
 import os
+import gc
 import time
 import json
 import requests
@@ -22,23 +23,27 @@ import leveldb
 
 # 网站地址
 site = 'https://thwiki.cc'
+# upload地址
+upload = 'upload.thwiki.cc'
+# Test
+#site = 'https://zh.moegirl.org'
+#upload = 'img.moegirl.org'
 # 是否是更新模式
 is_update_mode = False
 # 需要下载的namespaces
-#default:
+# default:
 #namespaces = ['0']
 # thwiki
-namespaces = ['0', # 主
-              '4', # THBWiki
-              '200', # 用户wiki
-              '202', # 用户资料
-              '506', # 附带文档
-              '508', # 游戏对话
-              '512',] # 歌词对话
+namespaces = ['0',  # 主
+              '4',  # THBWiki
+              '200',  # 用户wiki
+              '202',  # 用户资料
+              '506',  # 附带文档
+              '508',  # 游戏对话
+              '512',  # 歌词对话
+              ]
 # API地址
 api_address = 'https://thwiki.cc/api.php'
-# 是否使用API
-is_using_api = False
 # 是否使用代理
 use_proxy = False
 # 代理池服务器地址
@@ -48,17 +53,13 @@ debug_mode = 1
 # Test_mode
 test_mode = True
 
-# Test
-# moegirl:
-#site = 'https://zh.moegirl.org'
-
 
 def logger(content, debug='no debug info'):
     """
     日志输出器
     :param content: 日志内容
     :param debug: debug内容
-    :return: 
+    :return:
     """
     with open('latest_log.txt', 'a', encoding='utf-8') as log_file:
         if debug_mode == 0 and content == '':
@@ -87,8 +88,8 @@ def get_proxy():
 def delete_proxy(proxy_):
     """
     # 删除一个代理地址
-    :param proxy_: 
-    :return: 
+    :param proxy_:
+    :return:
     """
     requests.get("http://{}/delete/?proxy={}".format(proxy_pool, proxy_))
 
@@ -98,7 +99,7 @@ def handle_file_name(string, mode=0):
     用于处理文件名敏感的字符串
     :param string: 需要处理的字符串
     :param mode: 不为0就处理斜杠否则处理斜杠。
-    :return: 
+    :return:
     """
     if mode == 0:
         return string\
@@ -122,8 +123,13 @@ def new_db_file():
     logger('正在创建/取得数据库')
     titles_database = leveldb.LevelDB('titles')
     contents_database = leveldb.LevelDB('contents')
+    redirects_database = leveldb.LevelDB('redirects')
     images_database = leveldb.LevelDB('images')
-    return [titles_database, contents_database, images_database]
+    return [
+        titles_database,
+        contents_database,
+        redirects_database,
+        images_database]
 
 
 def db_put(db, key, value):
@@ -131,9 +137,9 @@ def db_put(db, key, value):
     向数据库添加数据
     所有数据都会被转化为str并用utf-8编码为bytes，存入数据库
     :param db: 数据库对象
-    :param key: 
-    :param value: 
-    :return: 
+    :param key:
+    :param value:
+    :return:
     """
     db.Put(str(key).encode('utf-8'), str(value).encode('utf-8'))
 
@@ -141,9 +147,9 @@ def db_put(db, key, value):
 def db_exist(db, key):
     """
     判断指定key是否存在
-    :param db: 
-    :param key: 
-    :return: 
+    :param db:
+    :param key:
+    :return:
     """
     try:
         db.Get(str(key).encode('utf-8'))
@@ -155,15 +161,58 @@ def db_exist(db, key):
 def db_get(db, key):
     """
     从数据库获得数据
-    :param db: 
-    :param key: 
-    :return: 
+    :param db:
+    :param key:
+    :return:
     """
     try:
         return db.Get(str(key).encode('utf-8')).decode('utf-8')
     except Exception as e:
         logger('从数据库获得键出错:{}'.format(str(e)))
         return False
+
+
+def get_response(url, retry_count=6):
+    """
+    get一个url
+    集成了重试和使用代理的功能
+    :param url: 需要获取的url
+    :param retry_count: 重试次数，如果是-1就无限重试
+    :return: 如果失败了就返回False，成功了就返回requests Response对象
+    """
+    content_response = False
+    # 如果使用代理
+    if use_proxy:
+        while not retry_count == 0:
+            proxy = get_proxy()
+            try:
+                content_response = requests.get(
+                    url,
+                    timeout=20,
+                    proxies={'http': 'http://{}'.format(proxy),
+                             'https': 'http://{}'.format(proxy)}
+                )
+                break
+            except BaseException as e:
+                retry_count -= 1
+                logger(url + '获取失败，重试剩余{}次'
+                       .format(retry_count), str(e))
+                if 'Cannot connect to proxy' in str(e) or \
+                        'Connection aborted' in str(e):
+                    delete_proxy(proxy)
+                    retry_count += 1
+    # 如果不使用
+    else:
+        while not retry_count == 0:
+            try:
+                content_response = requests.get(url, timeout=20)
+                break
+            except BaseException as e:
+                retry_count -= 1
+                logger(url + '  获取失败，重试剩余{}次'
+                       .format(retry_count), str(e))
+                time.sleep(3)
+    return content_response
 
 
 def get_all_titles():
@@ -174,60 +223,34 @@ def get_all_titles():
     for namespace in namespaces:
         next_title = ''
         while True:
-            if use_proxy:
-                while True:
-                    proxy = get_proxy()
-                    try:
-                        response_json = requests.get(
-                            api_address +
-                            '?action=query'
-                            '&format=json'
-                            '&list=allpages'
-                            '&apfrom={continue_}'
-                            '&apnamespace={namespace}'
-                            '&apfilterredir=nonredirects'
-                            '&aplimit=500'.format(continue_ = next_title,
-                                                  namespace = namespace),
-                            timeout=20,
-                            proxies={'http': 'http://{}'.format(proxy),
-                                     'https': 'http://{}'.format(proxy)}
-                        ).json()
-                        break
-                    except Exception as e:
-                        logger('获取{}错误,重试。'.format(next_title), str(e))
-                        if 'Cannot connect to proxy' in str(e) or \
-                                'Connection aborted' in str(e):
-                            delete_proxy(proxy)
+            request_url = api_address + '?action=query&' \
+                                        'format=json&' \
+                                        'list=allpages&' \
+                                        'apfrom={continue_}&' \
+                                        'apnamespace={namespace}&' \
+                                        'apfilterredir=nonredirects&' \
+                                        'aplimit=500'\
+                                        .format(continue_=next_title,
+                                                namespace=namespace)
+
+            response = get_response(request_url, -1)
+            print(response)
+            if response:
+                response_json = response.json()
             else:
-                while True:
-                    try:
-                        response_json = requests.get(
-                            api_address +
-                            '?action=query'
-                            '&format=json'
-                            '&list=allpages'
-                            '&apfrom={continue_}'
-                            '&apnamespace={namespace}'
-                            '&apfilterredir=nonredirects'
-                            '&aplimit=500'.format(continue_=next_title,
-                                                  namespace=namespace),
-                            timeout=20
-                        ).json()
-                        break
-                    except Exception as e:
-                        logger('获取{}错误,五秒后重试。'.format(next_title), str(e))
-                        time.sleep(3)
+                continue
 
             # 向数据库插入title
             for single_page_json in response_json['query']['allpages']:
                 title = single_page_json['title']
                 # 插入数据库中
+                if db_exist(titles_db, title):
+                    continue
                 db_put(titles_db, title, [])
 
-            pages += 1
-            logger(' | '.join(['获取所有页面...',
-                               '第{}页'.format(pages),
-                               '已经抓取{}个词条'.format(pages)]))
+            pages += len(response_json['query']['allpages'])
+            logger(' | '.join(['获取所有词条...',
+                               '已经获取{}个词条'.format(pages)]))
 
             # 检查API的返回是否有continue
             # 有就让continue_为apcontinue，否则就
@@ -258,27 +281,21 @@ class PageHandler:
         :param content_source: 维基内容源代码
         :return: 处理好的源码
         """
-        soup = BeautifulSoup(content_source, 'lxml')
-        if is_using_api:
-            main_content_source_soup = soup
-            main_content_source = content_source
-        else:
-            main_content_source_soup = soup.find(id='mw-content-text')
-            main_content_source = str(main_content_source_soup)
+        main_content_source_soup = BeautifulSoup(content_source, 'lxml')
 
         # 替换链接为key
         links = main_content_source_soup.find_all(href=True, title=True)
         for link in links:
-            main_content_source = main_content_source.replace(
+            content_source = content_source.replace(
                 'href="' + link['href'], 'href="' + 'entry://{}'.format(link['title']))
 
         # 替换section为mdict格式
-        main_content_source = main_content_source.replace(
+        content_source = content_source.replace(
             'href="#', 'href="entry://#')
-        main_content_source = re.sub(
+        content_source = re.sub(
             r'<span class="mw-headline" id=(.*)</span>',
             self.rep_method,
-            main_content_source)
+            content_source)
 
         # 寻找图片
         img_tags = main_content_source_soup.find_all('img', src=True)
@@ -289,7 +306,9 @@ class PageHandler:
             # 3.替换后缀名
             # 4.替换路径为本地路径
             img_replace = urllib.parse.unquote(img['src'])
-            img_replace = handle_file_name(img_replace)
+            # 如果图片不是upload的图片，就舍弃
+            if upload not in img_replace:
+                continue
             img_replace = img_replace \
                 .replace('.png', '.jpg') \
                 .replace('.gif', '.jpg') \
@@ -297,122 +316,63 @@ class PageHandler:
                 .replace('https://', '/') \
                 .replace('http://', '/') \
                 .replace('//', '/')
+            img_replace = handle_file_name(img_replace)
 
-            main_content_source = main_content_source \
+            content_source = content_source \
                 .replace(img['src'], img_replace)
+            # leveldb只允许一个同名键存在，所以就不用检查是否存在于数据库中了
             db_put(images_db, img['src'], [])
 
-        return main_content_source
-
-    @staticmethod
-    def get_response(url):
-        """
-        get一个url
-        集成了重试和使用代理的功能
-        :param url: 
-        :return: 如果失败了就返回False，成功了就返回requests Response对象
-        """
-        content_response = False
-        # 如果使用代理
-        if use_proxy:
-            retry_count = 6
-            while retry_count > 0:
-                proxy = get_proxy()
-                try:
-                    content_response = requests.get(
-                        url,
-                        timeout=20,
-                        proxies={'http': 'http://{}'.format(proxy),
-                                 'https': 'http://{}'.format(proxy)}
-                    )
-                    break
-                except BaseException as e:
-                    retry_count -= 1
-                    logger(url + '获取失败，重试剩余{}次'
-                           .format(retry_count), str(e))
-                    if 'Cannot connect to proxy' in str(e) or \
-                                    'Connection aborted' in str(e):
-                        delete_proxy(proxy)
-                        retry_count += 1
-        # 如果不使用
-        else:
-            retry_count = 4
-            while retry_count > 0:
-                try:
-                    content_response = requests.get(url, timeout=20)
-                    break
-                except BaseException as e:
-                    retry_count -= 1
-                    logger(url + '  获取失败，重试剩余{}次'
-                           .format(retry_count), str(e))
-                    time.sleep(3)
-        return content_response
+        return content_source
 
     def get_content(self, title):
-        # 获得网页源码
-        content_response = self.get_response(title)
+        api_url = api_address + '?action=query&' \
+                                'format=json&' \
+                                'prop=revisions%7Credirects&' \
+                                'titles={title}&' \
+                                'rvprop=content%7Ctimestamp&' \
+                                'rvparse=1&' \
+                                'rdprop=title&' \
+                                'rdlimit=500'\
+                                .format(title=title)
+        # 获得api返回
+        content_response = get_response(api_url)
 
         if content_response:
-            content_source = content_response.text
             logger('获取页面成功')
         else:
             logger('获取页面失败')
             return
 
-        # 获得标题，如果没有标题就跳过
-        title_list = re.findall(
-            r'<h1 id="firstHeading" class="firstHeading" lang=".*">(.*)</h1>',
-            content_source
-        )
-        if title_list:
-            title = title_list[0]
-        else:
-            logger('此页面没有内容，跳过')
-            return
+        # 获得api返回json
+        response_json = content_response.json()
 
-        # 获得重定向，如果有就添加重定向
-        redirected_from_list = re.findall(
-            r'<span class="mw-redirectedfrom">.*<a href=".*" class="mw-redirect" title="(.*)">.*</a>.*</span>',
-            content_source
-        )
+        # 获得页面信息
+        page_json = response_json['query']['pages']
+        page_info = [value for key, value in page_json.items()][0]
+        source = page_info['revisions'][0]['*']
+        date = page_info['revisions'][0]['timestamp']
 
-        # 页面修改日期,用于判断页面是否更新
-        mod_date = re.findall(
-            r'<li id="footer-info-lastmod">(.*)</li>',
-            content_source
-        )
-        if mod_date:
-            date_text = mod_date[0]
-        else:
-            date_text = 'None'
-
-        if redirected_from_list:
-            redirected_from = redirected_from_list[0]
-            logger('{}\n此页面是重定向过来的，正在添加重定向标志'
-                   .format(title))
-            insert_content([
-                redirected_from,
-                '@@@LINK=' + title,
-                date_text
-            ])
-            return
-
-        # 如果不是重定向，页面又是最新的，就跳过
-        is_up2date = is_content_up2date(title, date_text)
-        if is_up2date:
-            logger('此页面是最新的，跳过。')
-            return
+        if 'redirects' in page_info:
+            for value in page_info['redirects']:
+                redirected_from = value['title']
+                content_json = json.dumps({'content': '@@@LINK=' + title})
+                db_put(redirects_db, redirected_from, content_json)
 
         # 处理源码以及添加图片
-        main_content_source = self.handle_content(content_source)
+        main_content_source = self.handle_content(source)
 
         # 添加内容到self.contents当中
-        insert_content([title, main_content_source, date_text])
+        content_json = json.dumps(
+            {'content': main_content_source, 'source': source, 'date': date})
+        db_put(contents_db, title, content_json)
+
+        # 标记此页面已经完工
+        db_put(titles_db, title, [1])
 
     def work(self):
-
         i = 0
-        for title,stats in titles_db.RangeIter():
+        for title, stats in titles_db.RangeIter():
             title = title.decode('utf-8')
 
             # 如果此页被处理过，就跳过
@@ -427,11 +387,11 @@ class PageHandler:
             # 计算本次消耗的时间并计算平均时间
             self.processed_this_time += 1
             average_time = ((time.time() - self.start_time)
-                           /self.processed_this_time)
+                            / self.processed_this_time)
             logger('[average_time]:{}'.format(average_time))
             # 计算预计剩余时间
             logger('[left_time]:{} hours'
-                   .format((self.page_num-i)*average_time/3600))
+                   .format((self.page_num - i) * average_time / 3600))
 
             i += 1
             if not use_proxy:
@@ -442,21 +402,82 @@ class PageHandler:
                     break
 
 
-# TODO
 class UpdateChecker:
     def __init__(self):
-        pass
+        self.process_num = \
+            len([title for title, stats in titles_db.RangeIter()]) / 50
+        self.processed = 0
+        self.start_time = time.time()
+
+    def check_update(self):
+
+        for date_info in self.get_next_50_titles():
+            logger('正在检查更新...')
+            print('.', end='')
+            titles = [i[0] for i in date_info]
+            titles_str = '|'.join(titles)
+
+            request_url = api_address + '?action=query&' \
+                'format=json&' \
+                'prop=revisions&' \
+                'titles={titles_str}&' \
+                'rvprop=timestamp'\
+                                        .format(titles_str=titles_str)
+
+            response = get_response(request_url, -1)
+            if response:
+                response_json = response.json()
+            else:
+                continue
+
+            dates = [data['revisions'][0]['timestamp']
+                     for page_id, data in response_json['query']['pages'].items()]
+            for i in range(len(titles)):
+                # 如果不存在就跳过
+                if not db_exist(contents_db, titles[i]):
+                    continue
+                old_date = json.loads(db_get(contents_db, titles[i]))
+
+                # 如果不是最新就把titlesdb标记为没有下载过
+                if not old_date == dates[i]:
+                    db_put(titles_db, titles[i], [])
+
+            # 计算剩余时间
+            self.processed += 1
+            average_time = \
+                (time.time() - self.start_time) / self.processed
+            last_time = \
+                (self.process_num - self.processed) * average_time
+
+            logger('average_time:{}\nlast_time:{}'
+                   .format(average_time, last_time))
+
+    @staticmethod
+    def get_next_50_titles():
+        """
+        用于迭代接下来50个标题
+        :return:
+        """
+        titles = list()
+        for title, content in titles_db.RangeIter():
+            date = json.loads(content.decode('utf-8'))['date']
+            titles.append([title, date])
+            if len(titles) == 50:
+                yield titles
+                titles = list()
+        if titles:
+            yield titles
 
 
 # 下载图片
 def download_image(main_site, quality):
-    image_the_last_id = get_the_last_id_from_table('images')
-    processed_this_time = 0
+    id_ = 0
+    images_num = len([i for i in images_db.RangeIter()])
     start_time = time.time()
-    for i in range(1, image_the_last_id + 1):
-
-        images_last = image_the_last_id - i
-        img_original_url = get_image_url_from_db(i)
+    for image, stats in images_db.RangeIter():
+        if json.loads(stats.decode()):
+            continue
+        img_original_url = image.decode()
         # 处理图片链接
         if img_original_url.startswith('https://') \
                 or img_original_url.startswith('http://'):
@@ -470,7 +491,7 @@ def download_image(main_site, quality):
 
         # 如果这三种情况都不是的话就跳过这张图片
         else:
-            processed_this_time += 1
+            id_ += 1
             continue
 
         # 这个是文件的相对路径
@@ -496,13 +517,13 @@ def download_image(main_site, quality):
         # 如果这张图片已经存在就跳过
         if os.path.exists(img_file_path):
             logger('{}已经存在，跳过。'.format(img_name))
-            processed_this_time += 1
+            id_ += 1
             continue
 
         logger(
             '正在保存{}\n剩余{}张'.format(
                 img_name,
-                images_last),
+                images_num - id_),
             img_original_url + '\nfile:' + img_file_path)
         # 如果目录不存在就创建
         if not os.path.exists(img_forth_path):
@@ -552,7 +573,7 @@ def download_image(main_site, quality):
                     time.sleep(3)
 
         if retry_count == 0:
-            processed_this_time += 1
+            id_ += 1
             continue
 
         # 打开图片，并且处理图片为RGB模式，省空间
@@ -564,48 +585,55 @@ def download_image(main_site, quality):
             img_rgb.save(img_file_path, quality=quality)
         except Exception as e:
             logger('保存图片{}失败,放弃。'.format(img_name), str(e))
-            processed_this_time += 1
+            id_ += 1
             continue
 
         # 计算平均时间
-        processed_this_time += 1
+        id_ += 1
         average_time = ((time.time() - start_time)
-                        / processed_this_time)
+                        / id_)
         logger('[average_time]:{}'.format(average_time))
 
         # 计算预计剩余时间
         logger('[left_time]:{} hours'
-               .format((image_the_last_id - i) * average_time / 3600))
+               .format((images_num - id_) * average_time / 3600))
 
         time.sleep(2)
 
+
 # 保存mdict源文件内容
 def save_content():
-    achievement = open('Achievement.txt', 'w', encoding='utf-8')
-    content_the_last_id = get_the_last_id_from_table('content')
-    for i in range(1, content_the_last_id + 1):
-        title, now_content = get_content_from_db(i)
-        achievement.write(title + '\n' + now_content)
-        # 如果不是最后一个元素就换行
-        if i is not content_the_last_id:
-            achievement.write('\n</>\n')
-
-    achievement.close()
-
+    with open('Achievement.txt', 'w', encoding='utf-8') as f:
+        for title, content in contents_db.RangeIter():
+            title = title.decode()
+            content = json.loads(content.decode())['content']
+            f.write(title + '\n' + content + '\n</>\n')
+        for title, content in redirects_db.RangeIter():
+            title = title.decode()
+            content = json.loads(content.decode())['content']
+            f.write(title + '\n' + content + '\n</>\n')
 
 if __name__ == '__main__':
     # 下载图片质量，因为wiki图片很多，所以要压缩一下。
     image_quality = 50
 
     # 新建leveldb文件
-    titles_db, contents_db, images_db = new_db_file()
+    titles_db, contents_db, redirects_db, images_db = new_db_file()
 
     # 获得所有页面
     get_all_titles()
 
+    if is_update_mode:
+        update_checker = UpdateChecker()
+        update_checker.check_update()
+        del update_checker
+        gc.collect()
+
     # 处理页面并获取图片链接，存入数据库中
     page_handler = PageHandler()
     page_handler.work()
+    del page_handler
+    gc.collect()
 
     # 保存mdict源文件内容
     save_content()
