@@ -211,6 +211,7 @@ def get_response(url, retry_count=6):
                 retry_count -= 1
                 logger(url + '  获取失败，重试剩余{}次'
                        .format(retry_count), str(e))
+
                 time.sleep(3)
     return content_response
 
@@ -413,10 +414,9 @@ class UpdateChecker:
 
     def check_update(self):
 
-        for date_info in self.get_next_50_titles():
+        for titles in self.get_next_50_titles():
             logger('正在检查更新...')
             print('.', end='')
-            titles = [i[0] for i in date_info]
             titles_str = '|'.join(titles)
 
             request_url = api_address + '?action=query&' \
@@ -424,7 +424,7 @@ class UpdateChecker:
                 'prop=revisions&' \
                 'titles={titles_str}&' \
                 'rvprop=timestamp'\
-                                        .format(titles_str=titles_str)
+                .format(titles_str=titles_str)
 
             response = get_response(request_url, -1)
             if response:
@@ -462,8 +462,7 @@ class UpdateChecker:
         """
         titles = list()
         for title, content in titles_db.RangeIter():
-            date = json.loads(content.decode('utf-8'))['date']
-            titles.append([title, date])
+            titles.append(title)
             if len(titles) == 50:
                 yield titles
                 titles = list()
@@ -575,7 +574,7 @@ def save_content():
 
 if __name__ == '__main__':
     # 下载图片质量，因为wiki图片很多，所以要压缩一下。
-    image_quality = 50
+    image_quality = 40
 
     # 新建leveldb文件
     titles_db, contents_db, redirects_db, images_db = new_db_file()
@@ -597,6 +596,9 @@ if __name__ == '__main__':
 
     # 保存mdict源文件内容
     save_content()
+    del contents_db
+    del redirects_db
+    gc.collect()
 
     # 下载图片
     download_image(site, image_quality)
