@@ -269,7 +269,13 @@ class PageHandler:
     def __init__(self):
         self.processed_this_time = 0
         self.start_time = time.time()
-        self.page_num = len([i for i in titles_db.RangeIter()])
+        self.need_to_handle_titles = list()
+
+        # 需要处理的页面数
+        for title,status in titles_db.RangeIter():
+            if json.loads(status.decode('utf-8')):
+                self.need_to_handle_titles.append(title)
+        self.page_num = len(self.need_to_handle_titles)
 
     @staticmethod
     def rep_method(got):
@@ -375,11 +381,11 @@ class PageHandler:
 
     def work(self):
         i = 0
-        for title, stats in titles_db.RangeIter():
+        for title, status in titles_db.RangeIter():
             title = title.decode('utf-8')
 
             # 如果此页被处理过，就跳过
-            if json.loads(stats.decode('utf-8')):
+            if json.loads(status.decode('utf-8')):
                 continue
 
             logger('正在获取\n{}\n剩余页面:{}'
@@ -415,7 +421,7 @@ class UpdateChecker:
     def check_update(self):
 
         for titles in self.get_next_50_titles():
-            logger('正在检查更新...')
+            logger('正在检查更新...', str(titles))
             print('.', end='')
             titles_str = '|'.join(titles)
 
@@ -432,17 +438,28 @@ class UpdateChecker:
             else:
                 continue
 
-            dates = [data['revisions'][0]['timestamp']
-                     for page_id, data in response_json['query']['pages'].items()]
-            for i in range(len(titles)):
-                # 如果不存在就跳过
-                if not db_exist(contents_db, titles[i]):
-                    continue
-                old_date = json.loads(db_get(contents_db, titles[i]))
+            # 获得所有标题的最新date
+            pages = [date for page_id, date in response_json['query']['pages'].items()]
+            dates = dict()
+            for page in pages:
+                if 'title' in page and 'revisions' in page:
+                    title = page['title']
+                    date = page['revisions'][0]['timestamp']
+                    dates[title] = date
 
-                # 如果不是最新就把titlesdb标记为没有下载过
-                if not old_date == dates[i]:
-                    db_put(titles_db, titles[i], [])
+            # 开始核对日期
+            out_of_date_titles = ''
+            for title, new_date in dates.items():
+                if not db_exist(contents_db, title):
+                    continue
+                old_content = db_get(contents_db, title)
+                old_content_json = json.loads(old_content)
+                old_date = old_content_json['date']
+                if not old_date == new_date:
+                    out_of_date_titles += title + '  |  '
+                    db_put(titles_db, title, [])
+
+            logger('需要更新的页面：' + (out_of_date_titles if out_of_date_titles else '0'))
 
             # 计算剩余时间
             self.processed += 1
@@ -462,7 +479,7 @@ class UpdateChecker:
         """
         titles = list()
         for title, content in titles_db.RangeIter():
-            titles.append(title)
+            titles.append(title.decode('utf-8'))
             if len(titles) == 50:
                 yield titles
                 titles = list()
@@ -563,14 +580,19 @@ def download_image(main_site, quality):
 # 保存mdict源文件内容
 def save_content():
     with open('Achievement.txt', 'w', encoding='utf-8') as f:
+        is_first_run = True
         for title, content in contents_db.RangeIter():
             title = title.decode()
             content = json.loads(content.decode())['content']
-            f.write(title + '\n' + content + '\n</>\n')
+            if is_first_run:
+                f.write(title + '\r\n' + content + '\r\n</>')
+                is_first_run = False
+            else:
+                f.write('\r\n' + title + '\r\n' + content + '\r\n</>')
         for title, content in redirects_db.RangeIter():
             title = title.decode()
             content = json.loads(content.decode())['content']
-            f.write(title + '\n' + content + '\n</>\n')
+            f.write('\r\n' + title + '\r\n' + content + '\r\n</>')
 
 if __name__ == '__main__':
     # 下载图片质量，因为wiki图片很多，所以要压缩一下。
