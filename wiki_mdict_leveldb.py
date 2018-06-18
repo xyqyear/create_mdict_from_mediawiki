@@ -27,9 +27,14 @@ import leveldb
 #upload = 'upload.thwiki.cc'
 # API地址
 #api_address = 'https://thwiki.cc/api.php'
-site = 'https://zh.moegirl.org'
-upload = 'img.moegirl.org'
-api_address = 'https://zh.moegirl.org/api.php'
+
+#site = 'https://zh.moegirl.org'
+#upload = 'img.moegirl.org'
+#api_address = 'https://zh.moegirl.org/api.php'
+
+site = 'https://minecraft-zh.gamepedia.com'
+upload = 'd1u5p3l4wpay3k.cloudfront.net/minecraft_zh_gamepedia'
+api_address = 'https://minecraft-zh.gamepedia.com/api.php'
 # 需要下载的namespaces
 # default:
 namespaces = ['0']
@@ -42,6 +47,8 @@ namespaces = ['0']
 #              '508',  # 游戏对话
 #              '512',  # 歌词对话
 #              ]
+# 是否下载图片
+is_download_image = True
 # 是否是更新模式
 is_update_mode = False
 # 是否使用代理
@@ -81,9 +88,13 @@ def get_proxy():
     # 获得一个代理地址
     :return: 代理地址
     """
-    proxy_address = requests.get('http://{}/get'.format(proxy_pool)).text
-    return proxy_address
-
+    # 餱甚至这个也会出错，所以也加一个try
+    try:
+        proxy_address = requests.get('http://{}/get'.format(proxy_pool)).text
+        return proxy_address
+    except Exception as e:
+        logger('','获取代理地址出错{}'.format(str(e)))
+        return False
 
 def delete_proxy(proxy_):
     """
@@ -91,7 +102,10 @@ def delete_proxy(proxy_):
     :param proxy_:
     :return:
     """
-    requests.get("http://{}/delete/?proxy={}".format(proxy_pool, proxy_))
+    try:
+        requests.get("http://{}/delete/?proxy={}".format(proxy_pool, proxy_))
+    except Exception as e:
+        logger('', '删除代理地址出错{}'.format(str(e)))
 
 
 def handle_file_name(string, mode=0):
@@ -186,6 +200,10 @@ def get_response(url, retry_count=6):
         while not retry_count == 0:
             proxy = get_proxy()
             try:
+                if proxy:
+                    pass
+                else:
+                    raise BaseException
                 content_response = requests.get(
                     url,
                     timeout=20,
@@ -247,8 +265,7 @@ def get_all_titles():
                 if db_exist(titles_db, title):
                     continue
                 db_put(titles_db, title, [])
-
-            pages += len(response_json['query']['allpages'])
+                pages += 1
             logger(' | '.join(['获取所有词条...',
                                '已经获取{}个词条'.format(pages)]))
 
@@ -274,7 +291,8 @@ class PageHandler:
         # 需要处理的页面数
         for title,status in titles_db.RangeIter():
             if json.loads(status.decode('utf-8')):
-                self.need_to_handle_titles.append(title)
+                continue
+            self.need_to_handle_titles.append(title)
         self.page_num = len(self.need_to_handle_titles)
 
     @staticmethod
@@ -596,7 +614,7 @@ def save_content():
 
 if __name__ == '__main__':
     # 下载图片质量，因为wiki图片很多，所以要压缩一下。
-    image_quality = 40
+    image_quality = 50
 
     # 新建leveldb文件
     titles_db, contents_db, redirects_db, images_db = new_db_file()
@@ -623,6 +641,7 @@ if __name__ == '__main__':
     gc.collect()
 
     # 下载图片
-    download_image(site, image_quality)
+    if is_download_image:
+        download_image(site, image_quality)
 
     logger('Done', 'Done')
