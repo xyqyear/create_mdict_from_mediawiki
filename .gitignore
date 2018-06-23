@@ -4,6 +4,7 @@
 *.jpg
 *.mdd
 *.mdx
+*.pyc
 contents/
 images/
 titles/

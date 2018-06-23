@@ -18,48 +18,14 @@ import urllib.parse
 # 用于暂存图片于内存
 import io
 
+from config import (site, upload, api_address,
+                    namespaces, is_download_image,
+                    is_update_mode, is_use_proxy,
+                    proxy_pool, image_quality,
+                    debug_mode, test_mode)
+
 # 用于储存数据
 import leveldb
-
-# 网站地址
-#site = 'https://thwiki.cc'
-# upload地址
-#upload = 'upload.thwiki.cc'
-# API地址
-#api_address = 'https://thwiki.cc/api.php'
-
-#site = 'https://zh.moegirl.org'
-#upload = 'img.moegirl.org'
-#api_address = 'https://zh.moegirl.org/api.php'
-
-site = 'https://minecraft-zh.gamepedia.com'
-upload = 'd1u5p3l4wpay3k.cloudfront.net/minecraft_zh_gamepedia'
-api_address = 'https://minecraft-zh.gamepedia.com/api.php'
-# 需要下载的namespaces
-# default:
-namespaces = ['0']
-# thwiki
-#namespaces = ['0',  # 主
-#              '4',  # THBWiki
-#              '200',  # 用户wiki
-#              '202',  # 用户资料
-#              '506',  # 附带文档
-#              '508',  # 游戏对话
-#              '512',  # 歌词对话
-#              ]
-# 是否下载图片
-is_download_image = True
-# 是否是更新模式
-is_update_mode = False
-# 是否使用代理
-use_proxy = False
-# 代理池服务器地址
-proxy_pool = '192.168.10.125:23333'
-# 日志输出模式:0是普通，1是debug
-debug_mode = 1
-# Test_mode
-test_mode = True
-
 
 def logger(content, debug='no debug info'):
     """
@@ -95,6 +61,7 @@ def get_proxy():
     except Exception as e:
         logger('','获取代理地址出错{}'.format(str(e)))
         return False
+
 
 def delete_proxy(proxy_):
     """
@@ -196,7 +163,7 @@ def get_response(url, retry_count=6):
     """
     content_response = False
     # 如果使用代理
-    if use_proxy:
+    if is_use_proxy:
         while not retry_count == 0:
             proxy = get_proxy()
             try:
@@ -417,11 +384,11 @@ class PageHandler:
                             / self.processed_this_time)
             logger('[average_time]:{}'.format(average_time))
             # 计算预计剩余时间
-            logger('[left_time]:{} hours'
+            logger('[remaining_time]:{} hours'
                    .format((self.page_num - i) * average_time / 3600))
 
             i += 1
-            if not use_proxy:
+            if not is_use_proxy:
                 time.sleep(2)
 
             if test_mode:
@@ -483,11 +450,11 @@ class UpdateChecker:
             self.processed += 1
             average_time = \
                 (time.time() - self.start_time) / self.processed
-            last_time = \
+            remaining_time = \
                 (self.process_num - self.processed) * average_time
 
-            logger('average_time:{}\nlast_time:{}'
-                   .format(average_time, last_time))
+            logger('average_time:{}\nremaining_time:{}'
+                   .format(average_time, remaining_time))
 
     @staticmethod
     def get_next_50_titles():
@@ -512,7 +479,7 @@ def download_image(main_site, quality):
     start_time = time.time()
     for image, stats in images_db.RangeIter():
         # 如果下载过了就不下了
-        if json.loads(stats.decode()):
+        if json.loads(stats.decode('utf-8')):
             continue
         img_original_url = image.decode()
         # 处理图片链接
@@ -589,7 +556,7 @@ def download_image(main_site, quality):
         logger('[average_time]:{}'.format(average_time))
 
         # 计算预计剩余时间
-        logger('[left_time]:{} hours'
+        logger('[remaining_time]:{} hours'
                .format((images_num - id_) * average_time / 3600))
 
         time.sleep(2)
@@ -613,9 +580,6 @@ def save_content():
             f.write('\r\n' + title + '\r\n' + content + '\r\n</>')
 
 if __name__ == '__main__':
-    # 下载图片质量，因为wiki图片很多，所以要压缩一下。
-    image_quality = 50
-
     # 新建leveldb文件
     titles_db, contents_db, redirects_db, images_db = new_db_file()
 

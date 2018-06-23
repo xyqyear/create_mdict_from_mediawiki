@@ -5,11 +5,13 @@
 ## 依赖库:
 	
 	bs4
-	PIL(pillow)
+	PIL(pip install pillow)
 	requests
 	leveldb
 
-如果windows不能使用pip安装leveldb的可以尝试使用[这个](https://github.com/happynear/py-leveldb-windows/)
+如果windows不能使用pip安装leveldb的可以尝试使用[这个](https://github.com/happynear/py-leveldb-windows/)\
+!!!!注意，用上面的预编译文件在windows上运行过后
+
 
 ## 简介
 
@@ -19,30 +21,35 @@
 
 需要mediawiki支持api
 
-### wiki_mdict.py
+### config.py
 
-主文件
+配置文件
+
+请先关闭测试模式!(在最后一行)\
+如下更改
+
+    test_mode = False
 
 修改以下两行来匹配为其他mediawiki\
 upload是这个wiki的图片域名
 
-	site = 'https://thwiki.cc'
-    upload = 'upload.thwiki.cc'
+	site = 'https://***.***'
+    upload = 'upload.***.***'
 
 site就是此wiki的域名，前面要加上http或者https\
 修改以下一行更改api地址
     
-    api_address = 'https://thwiki.cc/api.php'
+    api_address = 'https://***.***/api.php'
 
 如果已经完成一次爬取，下一次可以使用更新模式
 
-    is_update_mode = False
+    is_update_mode = False # or True
 
 修改以下两行来决定是否使用代理以及添加代理框架的API\
 代理框架是使用的[这个](https://github.com/jhao104/proxy_pool)\
 可能需要小小配置一下。
 
-    use_proxy = True
+    is_use_proxy = True
     proxy_pool = '192.168.10.125:23333'
 
 
