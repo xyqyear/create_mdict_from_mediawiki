@@ -10,6 +10,7 @@ import os
 import gc
 import time
 import json
+import platform
 import requests
 
 # 用于unquote
@@ -288,6 +289,9 @@ class PageHandler:
             self.rep_method,
             content_source)
 
+        # 删除多余空行
+        content_source = re.sub(r'(\r\n){2,}','\r\n',content_source)
+
         # 寻找图片
         img_tags = main_content_source_soup.find_all('img', src=True)
         for img in img_tags:
@@ -303,11 +307,16 @@ class PageHandler:
             img_replace = img_replace \
                 .replace('.png', '.jpg') \
                 .replace('.gif', '.jpg') \
-                .replace('.jpeg', '.jpg') \
-                .replace('https://', '/') \
-                .replace('http://', '/') \
-                .replace('//', '/')
+                .replace('.jpeg', '.jpg')
+
             img_replace = handle_file_name(img_replace)
+
+            if 'https_//' in img_replace:
+                img_replace = img_replace.replace('https_//', 'file:///')
+            elif 'http_//' in img_replace:
+                img_replace = img_replace.replace('http_//', 'file:///')
+            elif '//' in img_replace:
+                img_replace = img_replace.replace('//', 'file:///')
 
             content_source = content_source \
                 .replace(img['src'], img_replace)
@@ -382,7 +391,7 @@ class PageHandler:
             self.processed_this_time += 1
             average_time = ((time.time() - self.start_time)
                             / self.processed_this_time)
-            logger('[average_time]:{}'.format(average_time))
+            logger('[average_time]:{} s'.format(average_time))
             # 计算预计剩余时间
             logger('[remaining_time]:{} hours'
                    .format((self.page_num - i) * average_time / 3600))
@@ -453,7 +462,7 @@ class UpdateChecker:
             remaining_time = \
                 (self.process_num - self.processed) * average_time
 
-            logger('average_time:{}\nremaining_time:{}'
+            logger('average_time:{} s\nremaining_time:{}'
                    .format(average_time, remaining_time))
 
     @staticmethod
@@ -553,7 +562,7 @@ def download_image(main_site, quality):
         id_ += 1
         average_time = ((time.time() - start_time)
                         / id_)
-        logger('[average_time]:{}'.format(average_time))
+        logger('[average_time]:{} s'.format(average_time))
 
         # 计算预计剩余时间
         logger('[remaining_time]:{} hours'
@@ -566,18 +575,22 @@ def download_image(main_site, quality):
 def save_content():
     with open('Achievement.txt', 'w', encoding='utf-8') as f:
         is_first_run = True
+        if platform.system() == 'Windows':
+            next_line = '\n'
+        else:
+            next_line = '\r\n'
         for title, content in contents_db.RangeIter():
-            title = title.decode()
+            title = title.decode('utf-8')
             content = json.loads(content.decode())['content']
             if is_first_run:
-                f.write(title + '\r\n' + content + '\r\n</>')
+                f.write(title + next_line + content + next_line + '</>')
                 is_first_run = False
             else:
-                f.write('\r\n' + title + '\r\n' + content + '\r\n</>')
+                f.write(next_line + title + next_line + content + next_line + '</>')
         for title, content in redirects_db.RangeIter():
-            title = title.decode()
+            title = title.decode('utf-8')
             content = json.loads(content.decode())['content']
-            f.write('\r\n' + title + '\r\n' + content + '\r\n</>')
+            f.write(next_line + title + next_line + content + next_line + '</>')
 
 if __name__ == '__main__':
     # 新建leveldb文件
