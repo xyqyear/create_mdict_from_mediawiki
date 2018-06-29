@@ -307,16 +307,12 @@ class PageHandler:
             img_replace = img_replace \
                 .replace('.png', '.jpg') \
                 .replace('.gif', '.jpg') \
-                .replace('.jpeg', '.jpg')
+                .replace('.jpeg', '.jpg')\
+                .replace('https://', '/')\
+                .replace('http://', '/')\
+                .replace('//', '/')
 
             img_replace = handle_file_name(img_replace)
-
-            if 'https_//' in img_replace:
-                img_replace = img_replace.replace('https_//', 'file:///')
-            elif 'http_//' in img_replace:
-                img_replace = img_replace.replace('http_//', 'file:///')
-            elif '//' in img_replace:
-                img_replace = img_replace.replace('//', 'file:///')
 
             content_source = content_source \
                 .replace(img['src'], img_replace)
@@ -416,7 +412,7 @@ class UpdateChecker:
 
         for titles in self.get_next_50_titles():
             logger('正在检查更新...', str(titles))
-            print('.', end='')
+
             titles_str = '|'.join(titles)
 
             request_url = api_address + '?action=query&' \
