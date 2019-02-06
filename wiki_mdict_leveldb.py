@@ -28,6 +28,7 @@ from config import (site, upload, api_address,
 # 用于储存数据
 import leveldb
 
+
 def logger(content, debug='no debug info'):
     """
     日志输出器
@@ -587,6 +588,7 @@ def save_content():
             title = title.decode('utf-8')
             content = json.loads(content.decode())['content']
             f.write(next_line + title + next_line + content + next_line + '</>')
+
 
 if __name__ == '__main__':
     # 新建leveldb文件

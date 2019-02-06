@@ -61,3 +61,4 @@ site就是此wiki的域名，前面要加上http或者https\
 - [x] 使用leveldb替换sqlite
 - [x] 添加使用API爬取的支持
 - [x] 支持仅更新，这样就不用每次都重新爬
+- [ ] 使用XPath而不是Beautiful soup

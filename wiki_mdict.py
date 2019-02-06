@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+# !!!this file is deprecated!!
 
 from bs4 import BeautifulSoup
 
