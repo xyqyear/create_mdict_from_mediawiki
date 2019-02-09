@@ -344,10 +344,13 @@ class PageHandler:
         response_json = content_response.json()
 
         # 获得页面信息
+        if 'query' not in response_json:
+            logger('获取页面失败', 'no query')
+            return
         page_json = response_json['query']['pages']
         page_info = [value for key, value in page_json.items()][0]
         if 'revisions' not in page_info:
-            print('no revisions')
+            logger('获取页面失败', 'no revisions')
             return
         source = page_info['revisions'][0]['*']
         date = page_info['revisions'][0]['timestamp']
