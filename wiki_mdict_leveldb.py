@@ -10,16 +10,17 @@ import os
 import gc
 import time
 import json
+import hashlib
 import platform
 import requests
 
 # 用于unquote
-import urllib.parse
+from urllib.parse import unquote
 
 # 用于暂存图片于内存
 import io
 
-from config import (site, upload, api_address,
+from config import (site, api_address,
                     namespaces, is_download_image,
                     is_update_mode, is_use_proxy,
                     proxy_pool, image_quality,
@@ -101,10 +102,10 @@ def new_db_file():
     :return: 数据库链接对象的列表
     """
     logger('正在创建/加载数据库')
-    titles_database = leveldb.LevelDB('titles')
-    contents_database = leveldb.LevelDB('contents')
-    redirects_database = leveldb.LevelDB('redirects')
-    images_database = leveldb.LevelDB('images')
+    titles_database = leveldb.LevelDB('database/titles')
+    contents_database = leveldb.LevelDB('database/contents')
+    redirects_database = leveldb.LevelDB('database/redirects')
+    images_database = leveldb.LevelDB('database/images')
     return [
         titles_database,
         contents_database,
@@ -150,6 +151,20 @@ def db_get(db, key):
     except Exception as e:
         logger('从数据库获得键出错:{}'.format(str(e)))
         return False
+
+
+def get_image_filename(image_url):
+    """
+    使用unquote之前的图片链接生辰一个图片名
+    :param image_url:
+    :return:
+    """
+    file_ext = os.path.splitext(image_url)[1]
+    encoded_image_url = image_url.encode()
+    md5 = hashlib.md5(encoded_image_url)
+    sha1 = hashlib.sha1(encoded_image_url)
+
+    return md5.hexdigest() + '_' + sha1.hexdigest() + file_ext
 
 
 def get_response(url, retry_count=6):
@@ -293,29 +308,14 @@ class PageHandler:
         # 寻找图片
         img_tags = main_content_source_soup.find_all('img', src=True)
         for img in img_tags:
-            # 这里也处理一下图片src
-            # 1.unquote
-            # 2.替换windows文件名敏感字符
-            # 3.替换后缀名
-            # 4.替换路径为本地路径
-            img_replace = urllib.parse.unquote(img['src'])
-            # 如果图片不是upload的图片，就舍弃
-            if upload not in img_replace:
-                continue
-            img_replace = img_replace \
-                .replace('.png', '.jpg') \
-                .replace('.gif', '.jpg') \
-                .replace('.jpeg', '.jpg')\
-                .replace('https://', '/')\
-                .replace('http://', '/')\
-                .replace('//', '/')
 
-            img_replace = handle_file_name(img_replace)
+            image_url = img['src']
 
-            content_source = content_source \
-                .replace(img['src'], img_replace)
+            image_file_name = get_image_filename(image_url)
+
+            content_source = content_source.replace(img['src'], image_file_name)
             # leveldb只允许一个同名键存在，所以就不用检查是否存在于数据库中了
-            db_put(images_db, img['src'], [])
+            db_put(images_db, image_url, [])
 
         return content_source
 
@@ -385,9 +385,9 @@ class PageHandler:
             self.processed_this_time += 1
             average_time = ((time.time() - self.start_time)
                             / self.processed_this_time)
-            logger('[average_time]:{} s'.format(average_time))
+            logger('[average_time]:{:.2f} s'.format(average_time))
             # 计算预计剩余时间
-            logger('[remaining_time]:{} hours'
+            logger('[remaining_time]:{:.2f} hours'
                    .format((self.page_num - i) * average_time / 3600))
 
             i += 1
@@ -456,7 +456,7 @@ class UpdateChecker:
             remaining_time = \
                 (self.process_num - self.processed) * average_time
 
-            logger('average_time:{} s\nremaining_time:{}'
+            logger('average_time:{:.2f} s\nremaining_time:{:.2f}'
                    .format(average_time, remaining_time))
 
     @staticmethod
@@ -477,6 +477,8 @@ class UpdateChecker:
 
 # 下载图片
 def download_image(main_site, quality):
+    if not os.path.exists('Data'):
+        os.mkdir('Data')
     id_ = 0
     images_num = len([i for i in images_db.RangeIter()])
     start_time = time.time()
@@ -484,7 +486,8 @@ def download_image(main_site, quality):
         # 如果下载过了就不下了
         if json.loads(stats.decode('utf-8')):
             continue
-        img_original_url = image.decode()
+        img_original_url = image.decode('utf-8')
+        image_file_name = get_image_filename(img_original_url)
         # 处理图片链接
         if img_original_url.startswith('https://') \
                 or img_original_url.startswith('http://'):
@@ -501,40 +504,20 @@ def download_image(main_site, quality):
             id_ += 1
             continue
 
-        # 这个是文件的相对路径
-        img_file_rear_path = img_url\
-            .replace('https://', '')\
-            .replace('http://', '')
-
-        # unquote一下防止文件名过长
-        img_file_rear_path = urllib.parse.unquote(img_file_rear_path)
-
-        # 处理一下文件路径
-        img_file_rear_path = handle_file_name(img_file_rear_path)
-        img_file_rear_path = img_file_rear_path \
-            .replace('.png', '.jpg') \
-            .replace('.gif', '.jpg') \
-            .replace('.jpeg', '.jpg')
-
-        img_file_path = os.path.join(
-            os.path.abspath('.'), 'upload', img_file_rear_path)
-
-        img_forth_path, img_name = os.path.split(img_file_path)
+        image_name = os.path.split(unquote(img_original_url))[1]
+        image_path = os.path.join('Data', image_file_name)
 
         # 如果这张图片已经存在就跳过
-        if os.path.exists(img_file_path):
-            logger('{}已经存在，跳过。'.format(img_name))
+        if os.path.exists(image_path):
+            logger('{}已经存在，跳过。'.format(image_name))
             id_ += 1
             continue
 
         logger(
             '正在保存{}\n剩余{}张'.format(
-                img_name,
+                image_name,
                 images_num - id_),
-            img_original_url + '\nfile:' + img_file_path)
-        # 如果目录不存在就创建
-        if not os.path.exists(img_forth_path):
-            os.makedirs(img_forth_path)
+            img_original_url + '\nfile:' + image_path)
 
         # 尝试获取图片。
         img_requests = get_response(img_url)
@@ -545,9 +528,9 @@ def download_image(main_site, quality):
             img_object = Image.open(io.BytesIO(img_requests.content))
             img_rgb = img_object.convert('RGB')
             # 以一定的质量保存图片，质量在main里面指定
-            img_rgb.save(img_file_path, quality=quality)
+            img_rgb.save(image_path, quality=quality)
         except Exception as e:
-            logger('保存图片{}失败,放弃。'.format(img_name), str(e))
+            logger('保存图片{}失败,放弃。'.format(image_name), str(e))
             id_ += 1
             continue
 
@@ -556,10 +539,10 @@ def download_image(main_site, quality):
         id_ += 1
         average_time = ((time.time() - start_time)
                         / id_)
-        logger('[average_time]:{} s'.format(average_time))
+        logger('[average_time]:{:.2f} s'.format(average_time))
 
         # 计算预计剩余时间
-        logger('[remaining_time]:{} hours'
+        logger('[remaining_time]:{:.2f} hours'
                .format((images_num - id_) * average_time / 3600))
 
         time.sleep(2)

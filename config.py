@@ -8,7 +8,6 @@
 # api_address = 'https://thwiki.cc/api.php'
 
 site = 'https://zh.moegirl.org'
-upload = 'img.moegirl.org'
 api_address = 'https://zh.moegirl.org/api.php'
 
 # site = 'https://minecraft-zh.gamepedia.com'
