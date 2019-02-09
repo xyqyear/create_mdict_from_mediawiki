@@ -10,7 +10,8 @@
 	leveldb
 
 如果windows不能使用pip安装leveldb的可以尝试使用[这个](https://github.com/happynear/py-leveldb-windows/)\
-!!!!注意，用上面的预编译文件在windows上运行过后
+!!!!注意，用上面的预编译文件在windows上运行过后生成的数据库文件不能在linux上使用,反之亦然\
+貌似是那个leveldb的预编译文件使用的leveldb版本的问题
 
 
 ## 简介
@@ -51,6 +52,9 @@ site就是此wiki的域名，前面要加上http或者https\
 
     is_use_proxy = True
     proxy_pool = '192.168.10.125:23333'
+    
+最后生成的文件是Achievemen.txt,需要用mdict官方的[转换工具](https://www.mdict.cn/wp/?page_id=5227&lang=zh)转换成mdx格式\
+因为mdx格式本身不开源.
 
 
 本人不对使用此脚本的人用爬取下来的数据用作其他用途负任何责任

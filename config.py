@@ -1,24 +1,24 @@
 # -*- coding:utf-8 -*-
 
 # 网站地址
-#site = 'https://thwiki.cc'
+# site = 'https://thwiki.cc'
 # upload地址
-#upload = 'upload.thwiki.cc'
+# upload = 'upload.thwiki.cc'
 # API地址
-#api_address = 'https://thwiki.cc/api.php'
+# api_address = 'https://thwiki.cc/api.php'
 
-#site = 'https://zh.moegirl.org'
-#upload = 'img.moegirl.org'
-#api_address = 'https://zh.moegirl.org/api.php'
+site = 'https://zh.moegirl.org'
+upload = 'img.moegirl.org'
+api_address = 'https://zh.moegirl.org/api.php'
 
-site = 'https://minecraft-zh.gamepedia.com'
-upload = 'd1u5p3l4wpay3k.cloudfront.net/minecraft_zh_gamepedia'
-api_address = 'https://minecraft-zh.gamepedia.com/api.php'
+# site = 'https://minecraft-zh.gamepedia.com'
+# upload = 'd1u5p3l4wpay3k.cloudfront.net/minecraft_zh_gamepedia'
+# api_address = 'https://minecraft-zh.gamepedia.com/api.php'
 # 需要下载的namespaces
 # default:
 namespaces = ['0']
 # thwiki
-#namespaces = ['0',  # 主
+# namespaces = ['0',  # 主
 #              '4',  # THBWiki
 #              '200',  # 用户wiki
 #              '202',  # 用户资料
