@@ -31,13 +31,13 @@
 
     test_mode = False
 
-修改以下两行来匹配为其他mediawiki\
-upload是这个wiki的图片域名
+修改以下一行来匹配为其他mediawiki\
+site就是此wiki的域名，前面要加上http或者https(链接最后不需要再加 "\\" 符号)\
+例:
 
-	site = 'https://***.***'
-    upload = 'upload.***.***'
+	site = 'https://***.***'   # 正确
+	site = 'https://***.***/'   # 错误
 
-site就是此wiki的域名，前面要加上http或者https\
 修改以下一行更改api地址
     
     api_address = 'https://***.***/api.php'
@@ -67,4 +67,5 @@ Data是程序生成的Data目录,也就是保存图片的地方
 - [x] 使用leveldb替换sqlite
 - [x] 添加使用API爬取的支持
 - [x] 支持仅更新，这样就不用每次都重新爬
+- [x] 重写图片本地保存路径相关代码,mdxbuilder终于不报错啦 
 - [ ] 使用XPath而不是Beautiful soup
