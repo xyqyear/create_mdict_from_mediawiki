@@ -53,8 +53,10 @@ site就是此wiki的域名，前面要加上http或者https\
     is_use_proxy = True
     proxy_pool = '192.168.10.125:23333'
     
-最后生成的文件是Achievemen.txt,需要用mdict官方的[转换工具](https://www.mdict.cn/wp/?page_id=5227&lang=zh)转换成mdx格式\
-因为mdx格式本身不开源.
+最后生成的文件是Achievemen.txt,需要用MdxBuilder来转换成mdx字典文件\
+那个转换程序的Source填Achievement.txt\
+Target是mdx的保存位置\
+Data是程序生成的Data目录,也就是保存图片的地方
 
 
 本人不对使用此脚本的人用爬取下来的数据用作其他用途负任何责任
