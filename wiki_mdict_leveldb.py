@@ -102,6 +102,8 @@ def new_db_file():
     :return: 数据库链接对象的列表
     """
     logger('正在创建/加载数据库')
+    if not os.path.exists('database'):
+        os.mkdir('database')
     titles_database = leveldb.LevelDB('database/titles')
     contents_database = leveldb.LevelDB('database/contents')
     redirects_database = leveldb.LevelDB('database/redirects')
