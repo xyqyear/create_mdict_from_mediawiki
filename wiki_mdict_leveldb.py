@@ -61,7 +61,7 @@ def get_proxy():
         proxy_address = requests.get('http://{}/get'.format(proxy_pool)).text
         return proxy_address
     except Exception as e:
-        logger('','获取代理地址出错{}'.format(str(e)))
+        logger('', '获取代理地址出错{}'.format(str(e)))
         return False
 
 
@@ -81,21 +81,18 @@ def handle_file_name(string, mode=0):
     """
     用于处理文件名敏感的字符串
     :param string: 需要处理的字符串
-    :param mode: 不为0就处理斜杠否则处理斜杠。
+    :param mode: 为0就不处理斜杠否则处理斜杠。
     :return:
     """
-    if mode == 0:
-        return string\
-            .replace('"', '_').replace('<', '_') \
-            .replace('>', '_').replace('|', '_') \
-            .replace(':', '_').replace('?', '_').replace('*', '_')
+    string = string\
+        .replace('"', '_').replace('<', '_') \
+        .replace('>', '_').replace('|', '_') \
+        .replace(':', '_').replace('?', '_').replace('*', '_')
 
+    if mode == 0:
+        return string
     else:
-        return string\
-            .replace('\\', '_').replace('/', '_') \
-            .replace('"', '_').replace('<', '_') \
-            .replace('>', '_').replace('|', '_') \
-            .replace(':', '_').replace('?', '_').replace('*', '_')
+        return string.replace('\\', '_').replace('/', '_')
 
 
 def new_db_file():
@@ -103,7 +100,7 @@ def new_db_file():
     用于获取数据库对象
     :return: 数据库链接对象的列表
     """
-    logger('正在创建/取得数据库')
+    logger('正在创建/加载数据库')
     titles_database = leveldb.LevelDB('titles')
     contents_database = leveldb.LevelDB('contents')
     redirects_database = leveldb.LevelDB('redirects')
@@ -258,7 +255,7 @@ class PageHandler:
         self.need_to_handle_titles = list()
 
         # 需要处理的页面数
-        for title,status in titles_db.RangeIter():
+        for title, status in titles_db.RangeIter():
             if json.loads(status.decode('utf-8')):
                 continue
             self.need_to_handle_titles.append(title)
@@ -291,7 +288,7 @@ class PageHandler:
             content_source)
 
         # 删除多余空行
-        content_source = re.sub(r'(\r\n){2,}','\r\n',content_source)
+        content_source = re.sub(r'(\r\n){2,}', '\r\n', content_source)
 
         # 寻找图片
         img_tags = main_content_source_soup.find_all('img', src=True)
