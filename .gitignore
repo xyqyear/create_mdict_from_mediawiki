@@ -1,5 +1,4 @@
 *.jpg
-*.txt
 *.db
 *.jpg
 *.mdd
@@ -10,5 +9,7 @@ images/
 titles/
 redirects/
 upload/
-MdxBuilder_3
+MdxBuilder_3/MdxBuilder.cfg
+Achievement.txt
+latest_log.txt
 justconvert.py
