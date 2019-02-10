@@ -210,6 +210,7 @@ def get_response(url, retry_count=6):
             try:
                 content_response = requests.get(url, timeout=20)
                 if not content_response.content:
+                    retry_count -= 1
                     break
             except BaseException as e:
                 retry_count -= 1
