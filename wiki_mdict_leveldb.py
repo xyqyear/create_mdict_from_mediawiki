@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-from bs4 import BeautifulSoup
+import bs4
 
 # 用于压缩图片
 from PIL import Image
@@ -15,14 +15,13 @@ import platform
 import requests
 
 # 用于unquote
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 # 用于暂存图片于内存
 import io
 
 from config import (site, api_address,
-                    namespaces, is_download_image,
-                    is_update_mode, is_use_proxy,
+                    is_download_image, is_use_proxy,
                     proxy_pool, image_quality,
                     debug_mode, test_mode)
 
@@ -37,6 +36,7 @@ def logger(content, debug='no debug info'):
     :param debug: debug内容
     :return:
     """
+    time_pre = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     with open('latest_log.txt', 'a', encoding='utf-8') as log_file:
         if debug_mode == 0 and content == '':
             return
@@ -45,10 +45,10 @@ def logger(content, debug='no debug info'):
         else:
             log_info = content
 
-        log_info = '[{}]:\n'.format(time.asctime()) + log_info + '\n'
+        log_info = '[{}]:\n'.format(time_pre) + log_info + '\n'
         print(log_info)
         log_file_info = '\n[debug]: '.join([content, debug])
-        log_file_info = '[{}]:\n'.format(time.asctime()) + log_file_info + '\n'
+        log_file_info = '[{}]:\n'.format(time_pre) + log_file_info + '\n'
         log_file.write(log_file_info)
 
 
@@ -221,46 +221,42 @@ def get_all_titles():
     获取所有页面
     """
     pages = 0
-    for namespace in namespaces:
-        next_title = ''
-        while True:
-            request_url = api_address + '?action=query&' \
-                                        'format=json&' \
-                                        'list=allpages&' \
-                                        'apfrom={continue_}&' \
-                                        'apnamespace={namespace}&' \
-                                        'apfilterredir=nonredirects&' \
-                                        'aplimit=500'\
-                                        .format(continue_=next_title,
-                                                namespace=namespace)
+    next_title = ''
+    while True:
+        request_url = api_address + '?action=query&' \
+                                    'format=json&' \
+                                    'list=allpages&' \
+                                    'apfrom={continue_}&' \
+                                    'aplimit=500'\
+                                    .format(continue_=next_title)
 
-            response = get_response(request_url, -1)
-            if response:
-                response_json = response.json()
-            else:
+        response = get_response(request_url, -1)
+        if response:
+            response_json = response.json()
+        else:
+            continue
+
+        # 向数据库插入title
+        for single_page_json in response_json['query']['allpages']:
+            title = single_page_json['title']
+            # 插入数据库中
+            if db_exist(titles_db, title):
                 continue
+            db_put(titles_db, title, [])
+            pages += 1
+        logger(' | '.join(['获取所有词条...',
+                           '已经获取{}个词条'.format(pages)]))
 
-            # 向数据库插入title
-            for single_page_json in response_json['query']['allpages']:
-                title = single_page_json['title']
-                # 插入数据库中
-                if db_exist(titles_db, title):
-                    continue
-                db_put(titles_db, title, [])
-                pages += 1
-            logger(' | '.join(['获取所有词条...',
-                               '已经获取{}个词条'.format(pages)]))
+        # 检查API的返回是否有continue
+        # 有就让continue_为apcontinue，否则就
+        if 'continue' in response_json:
+            next_title = response_json['continue']['apcontinue']
+        else:
+            break
 
-            # 检查API的返回是否有continue
-            # 有就让continue_为apcontinue，否则就
-            if 'continue' in response_json:
-                next_title = response_json['continue']['apcontinue']
-            else:
+        if test_mode:
+            if pages > 0:
                 break
-
-            if test_mode:
-                if pages > 0:
-                    break
 
 
 # 差不多已经完工
@@ -287,7 +283,11 @@ class PageHandler:
         :param content_source: 维基内容源代码
         :return: 处理好的源码
         """
-        main_content_source_soup = BeautifulSoup(content_source, 'lxml')
+        main_content_source_soup = bs4.BeautifulSoup(content_source, 'lxml')
+
+        # 去除html注释
+        for element in main_content_source_soup(text=lambda text: isinstance(text, bs4.Comment)):
+            element.extract()
 
         # 替换链接为key
         links = main_content_source_soup.find_all(href=True, title=True)
@@ -320,53 +320,46 @@ class PageHandler:
 
         return content_source
 
-    def get_content(self, title):
-        api_url = api_address + '?action=query&' \
-                                'format=json&' \
-                                'prop=revisions%7Credirects&' \
-                                'titles={title}&' \
-                                'rvprop=content%7Ctimestamp&' \
-                                'rvparse=1&' \
-                                'rdprop=title&' \
-                                'rdlimit=500'\
-                                .format(title=title)
-        # 获得api返回
-        content_response = get_response(api_url)
+    def put_content(self, title):
+        api_url = api_address + '?action=parse' \
+                                '&format=json' \
+                                '&page={title}' \
+                                '&prop=text' \
+                                .format(title=quote(title))
 
+        content_response = get_response(api_url)
         if not content_response:
             logger('获取页面失败', 'empty response')
             return
 
-        # 获得api返回json
         response_json = content_response.json()
 
         # 获得页面信息
-        if 'query' not in response_json:
-            logger('获取页面失败', 'no query')
+        if 'parse' not in response_json:
+            logger('获取页面失败', 'no parse')
             return
-        page_json = response_json['query']['pages']
-        page_info = [value for key, value in page_json.items()][0]
-        if 'revisions' not in page_info:
-            logger('获取页面失败', 'no revisions')
+
+        if 'text' not in response_json['parse']:
+            logger('获取页面失败', 'no text')
             return
+
         logger('获取页面成功')
 
-        source = page_info['revisions'][0]['*']
-        date = page_info['revisions'][0]['timestamp']
+        source = response_json['parse']['text']['*']
 
-        if 'redirects' in page_info:
-            for value in page_info['redirects']:
-                redirected_from = value['title']
-                content_json = json.dumps({'content': '@@@LINK=' + title})
-                db_put(redirects_db, redirected_from, content_json)
+        # 处理重定向
+        if '<div class=\"redirectMsg\">' in source:
+            redirected_to = re.findall(r'<a href=.*? title="(.*?)">', source)[0]
+            content_json = json.dumps({'content': '@@@LINK=' + redirected_to})
+            db_put(redirects_db, title, content_json)
+            logger('页面重定向...')
 
-        # 处理源码以及添加图片
-        main_content_source = self.handle_content(source)
+        else:
+            # 处理源码以及添加图片
+            main_content_source = self.handle_content(source)
 
-        # 添加内容到self.contents当中
-        content_json = json.dumps(
-            {'content': main_content_source, 'source': source, 'date': date})
-        db_put(contents_db, title, content_json)
+            content_json = json.dumps({'content': main_content_source, 'source': source})
+            db_put(contents_db, title, content_json)
 
         # 标记此页面已经完工
         db_put(titles_db, title, [1])
@@ -383,16 +376,15 @@ class PageHandler:
             logger('正在获取\n{}\n剩余页面:{}'
                    .format(title, self.page_num - i))
 
-            self.get_content(title)
+            self.put_content(title)
 
             # 计算本次消耗的时间并计算平均时间
             self.processed_this_time += 1
             average_time = ((time.time() - self.start_time)
                             / self.processed_this_time)
-            logger('[average_time]:{:.2f} s'.format(average_time))
-            # 计算预计剩余时间
-            logger('[remaining_time]:{:.2f} hours'
-                   .format((self.page_num - i) * average_time / 3600))
+
+            logger('[average_time]:{:.2f} s\n[remaining_time]:{:.2f} hours'
+                   .format(average_time, (self.page_num - i) * average_time / 3600))
 
             i += 1
             if not is_use_proxy:
@@ -401,82 +393,6 @@ class PageHandler:
             if test_mode:
                 if i == 20:
                     break
-
-
-class UpdateChecker:
-    def __init__(self):
-        self.process_num = \
-            len([title for title, stats in titles_db.RangeIter()]) / 50
-        self.processed = 0
-        self.start_time = time.time()
-
-    def check_update(self):
-
-        for titles in self.get_next_50_titles():
-            logger('正在检查更新...', str(titles))
-
-            titles_str = '|'.join(titles)
-
-            request_url = api_address + '?action=query&' \
-                'format=json&' \
-                'prop=revisions&' \
-                'titles={titles_str}&' \
-                'rvprop=timestamp'\
-                .format(titles_str=titles_str)
-
-            response = get_response(request_url, -1)
-            if response:
-                response_json = response.json()
-            else:
-                continue
-
-            # 获得所有标题的最新date
-            pages = [date for page_id, date in response_json['query']['pages'].items()]
-            dates = dict()
-            for page in pages:
-                if 'title' in page and 'revisions' in page:
-                    title = page['title']
-                    date = page['revisions'][0]['timestamp']
-                    dates[title] = date
-
-            # 开始核对日期
-            out_of_date_titles = ''
-            for title, new_date in dates.items():
-                if not db_exist(contents_db, title):
-                    continue
-                old_content = db_get(contents_db, title)
-                old_content_json = json.loads(old_content)
-                old_date = old_content_json['date']
-                if not old_date == new_date:
-                    out_of_date_titles += title + '  |  '
-                    db_put(titles_db, title, [])
-
-            logger('需要更新的页面：' + (out_of_date_titles if out_of_date_titles else '0'))
-
-            # 计算剩余时间
-            self.processed += 1
-            average_time = \
-                (time.time() - self.start_time) / self.processed
-            remaining_time = \
-                (self.process_num - self.processed) * average_time
-
-            logger('average_time:{:.2f} s\nremaining_time:{:.2f}'
-                   .format(average_time, remaining_time))
-
-    @staticmethod
-    def get_next_50_titles():
-        """
-        用于迭代接下来50个标题
-        :return:
-        """
-        titles = list()
-        for title, content in titles_db.RangeIter():
-            titles.append(title.decode('utf-8'))
-            if len(titles) == 50:
-                yield titles
-                titles = list()
-        if titles:
-            yield titles
 
 
 # 下载图片
@@ -579,12 +495,6 @@ if __name__ == '__main__':
 
     # 获得所有页面
     get_all_titles()
-
-    if is_update_mode:
-        update_checker = UpdateChecker()
-        update_checker.check_update()
-        del update_checker
-        gc.collect()
 
     # 处理页面并获取图片链接，存入数据库中
     page_handler = PageHandler()
