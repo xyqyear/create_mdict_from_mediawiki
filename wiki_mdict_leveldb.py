@@ -182,9 +182,7 @@ def get_response(url, retry_count=6):
         while not retry_count == 0:
             proxy = get_proxy()
             try:
-                if proxy:
-                    pass
-                else:
+                if not proxy:
                     raise BaseException
                 content_response = requests.get(
                     url,
@@ -192,7 +190,11 @@ def get_response(url, retry_count=6):
                     proxies={'http': 'http://{}'.format(proxy),
                              'https': 'http://{}'.format(proxy)}
                 )
-                break
+                if not content_response.content:
+                    retry_count -= 1
+                    break
+                else:
+                    time.sleep(2)
             except BaseException as e:
                 retry_count -= 1
                 logger(url + '获取失败，重试剩余{}次'
@@ -201,12 +203,14 @@ def get_response(url, retry_count=6):
                         'Connection aborted' in str(e):
                     delete_proxy(proxy)
                     retry_count += 1
+                time.sleep(2)
     # 如果不使用
     else:
         while not retry_count == 0:
             try:
                 content_response = requests.get(url, timeout=20)
-                break
+                if not content_response.content:
+                    break
             except BaseException as e:
                 retry_count -= 1
                 logger(url + '  获取失败，重试剩余{}次'
