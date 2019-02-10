@@ -285,9 +285,12 @@ class PageHandler:
         """
         main_content_source_soup = bs4.BeautifulSoup(content_source, 'lxml')
 
-        # 去除html注释
+        # 去除html注释和代码
         for element in main_content_source_soup(text=lambda text: isinstance(text, bs4.Comment)):
             element.extract()
+        [s.extract() for s in main_content_source_soup('script')]
+
+        content_source = main_content_source_soup.prettify()
 
         # 替换链接为key
         links = main_content_source_soup.find_all(href=True, title=True)
