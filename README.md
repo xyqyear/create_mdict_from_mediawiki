@@ -1,6 +1,6 @@
 # 从mediawiki创建mdict
 
-### 代码再次重写，尝试保存数据到leveldb.
+### !!!!!由于mediawiki的api更改,此程序暂时无法在新版mediawiki上使用,代码正在更改中
 
 ## 依赖库:
 	

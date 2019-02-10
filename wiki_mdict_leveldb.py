@@ -161,12 +161,11 @@ def get_image_filename(image_url):
     :param image_url:
     :return:
     """
-    file_ext = os.path.splitext(image_url)[1]
     encoded_image_url = image_url.encode()
     md5 = hashlib.md5(encoded_image_url)
     sha1 = hashlib.sha1(encoded_image_url)
 
-    return md5.hexdigest() + '_' + sha1.hexdigest() + file_ext
+    return md5.hexdigest() + '_' + sha1.hexdigest() + '.jpg'
 
 
 def get_response(url, retry_count=6):
@@ -334,10 +333,8 @@ class PageHandler:
         # 获得api返回
         content_response = get_response(api_url)
 
-        if content_response:
-            logger('获取页面成功')
-        else:
-            logger('获取页面失败')
+        if not content_response:
+            logger('获取页面失败', 'empty response')
             return
 
         # 获得api返回json
@@ -352,6 +349,8 @@ class PageHandler:
         if 'revisions' not in page_info:
             logger('获取页面失败', 'no revisions')
             return
+        logger('获取页面成功')
+
         source = page_info['revisions'][0]['*']
         date = page_info['revisions'][0]['timestamp']
 
@@ -492,25 +491,24 @@ def download_image(main_site, quality):
         if json.loads(stats.decode('utf-8')):
             continue
         img_original_url = image.decode('utf-8')
+
         image_file_name = get_image_filename(img_original_url)
+        image_path = os.path.join('Data', image_file_name)
+
         # 处理图片链接
         if img_original_url.startswith('https://') \
                 or img_original_url.startswith('http://'):
             img_url = img_original_url
-
         elif img_original_url.startswith('//'):
             img_url = 'http:' + img_original_url
-
         elif img_original_url.startswith('/'):
             img_url = main_site + img_original_url
-
         # 如果这三种情况都不是的话就跳过这张图片
         else:
             id_ += 1
             continue
 
         image_name = os.path.split(unquote(img_original_url))[1]
-        image_path = os.path.join('Data', image_file_name)
 
         # 如果这张图片已经存在就跳过
         if os.path.exists(image_path):
