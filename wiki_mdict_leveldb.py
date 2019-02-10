@@ -190,7 +190,7 @@ def get_response(url, retry_count=6):
                     proxies={'http': 'http://{}'.format(proxy),
                              'https': 'http://{}'.format(proxy)}
                 )
-                if not content_response.content:
+                if content_response.content:
                     break
                 else:
                     retry_count -= 1
@@ -209,7 +209,7 @@ def get_response(url, retry_count=6):
         while not retry_count == 0:
             try:
                 content_response = requests.get(url, timeout=20)
-                if not content_response.content:
+                if content_response.content:
                     break
                 else:
                     retry_count -= 1
