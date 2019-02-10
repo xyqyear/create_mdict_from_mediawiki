@@ -43,10 +43,6 @@ site就是此wiki的域名，前面要加上http或者https(链接最后不需�
     
     api_address = 'https://***.***/api.php'
 
-如果已经完成一次爬取，下一次可以使用更新模式
-
-    is_update_mode = False # or True
-
 修改以下两行来决定是否使用代理以及添加代理框架的API\
 代理框架是使用的[这个](https://github.com/jhao104/proxy_pool)\
 可能需要小小配置一下。
