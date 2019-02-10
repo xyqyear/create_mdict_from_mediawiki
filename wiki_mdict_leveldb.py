@@ -191,9 +191,9 @@ def get_response(url, retry_count=6):
                              'https': 'http://{}'.format(proxy)}
                 )
                 if not content_response.content:
-                    retry_count -= 1
                     break
                 else:
+                    retry_count -= 1
                     time.sleep(2)
             except BaseException as e:
                 retry_count -= 1
@@ -210,8 +210,10 @@ def get_response(url, retry_count=6):
             try:
                 content_response = requests.get(url, timeout=20)
                 if not content_response.content:
-                    retry_count -= 1
                     break
+                else:
+                    retry_count -= 1
+                    time.sleep(2)
             except BaseException as e:
                 retry_count -= 1
                 logger(url + '  获取失败，重试剩余{}次'
