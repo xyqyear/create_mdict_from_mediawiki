@@ -64,5 +64,4 @@ Data是程序生成的Data目录,也就是保存图片的地方
 - [x] 使用leveldb替换sqlite
 - [x] 添加使用API爬取的支持
 - [x] 支持仅更新，这样就不用每次都重新爬
-- [x] 重写图片本地保存路径相关代码,mdxbuilder终于不报错啦 
-- [ ] 使用XPath而不是Beautiful soup
+- [x] 重写图片本地保存路径相关代码,mdxbuilder终于不报错啦

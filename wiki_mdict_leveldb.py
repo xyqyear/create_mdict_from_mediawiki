@@ -96,7 +96,7 @@ def handle_file_name(string, mode=0):
         return string.replace('\\', '_').replace('/', '_')
 
 
-def new_db_file():
+def get_db_obj():
     """
     用于获取数据库对象
     :return: 数据库链接对象的列表
@@ -297,36 +297,28 @@ class PageHandler:
             element.extract()
         [s.extract() for s in main_content_source_soup('script')]
 
-        content_source = main_content_source_soup.prettify()
-
-        # 替换链接为key
+        # 替换超链接为mdict格式
         links = main_content_source_soup.find_all(href=True, title=True)
         for link in links:
-            content_source = content_source.replace(
-                'href="' + link['href'], 'href="' + 'entry://{}'.format(link['title']))
-
-        # 替换section为mdict格式
-        content_source = content_source.replace(
-            'href="#', 'href="entry://#')
-        content_source = re.sub(
-            r'<span class="mw-headline" id=(.*)</span>',
-            self.rep_method,
-            content_source)
-
-        # 删除多余空行
-        content_source = re.sub(r'(\r\n){2,}', '\r\n', content_source)
+            link['href'] = 'entry://' + link['title']
 
         # 寻找图片
         img_tags = main_content_source_soup.find_all('img', src=True)
         for img in img_tags:
-
             image_url = img['src']
-
             image_file_name = get_image_filename(image_url)
-
-            content_source = content_source.replace(img['src'], image_file_name)
-            # leveldb只允许一个同名键存在，所以就不用检查是否存在于数据库中了
+            img['src'] = image_file_name
             db_put(images_db, image_url, [])
+
+        content_source = main_content_source_soup.prettify()
+
+        # 替换section为mdict格式
+        content_source = content_source.replace('href="#', 'href="entry://#')
+        content_source = re.sub(
+                                r'<span class="mw-headline" id=(.*)</span>',
+                                self.rep_method,
+                                content_source
+                                )
 
         return content_source
 
@@ -405,7 +397,6 @@ class PageHandler:
                     break
 
 
-# 下载图片
 def download_image(main_site, quality):
     if not os.path.exists('Data'):
         os.mkdir('Data')
@@ -429,14 +420,12 @@ def download_image(main_site, quality):
             img_url = 'http:' + img_original_url
         elif img_original_url.startswith('/'):
             img_url = main_site + img_original_url
-        # 如果这三种情况都不是的话就跳过这张图片
         else:
             id_ += 1
             continue
 
         image_name = os.path.split(unquote(img_original_url))[1]
 
-        # 如果这张图片已经存在就跳过
         if os.path.exists(image_path):
             logger('{}已经存在，跳过。'.format(image_name))
             id_ += 1
@@ -448,15 +437,13 @@ def download_image(main_site, quality):
                 images_num - id_),
             img_original_url + '\nfile:' + image_path)
 
-        # 尝试获取图片。
-        img_requests = get_response(img_url)
+        img_response = get_response(img_url)
 
         # 打开图片，并且处理图片为RGB模式，省空间
         # 不清楚为什么这里也会出错，不过姑且先加一个try吧
         try:
-            img_object = Image.open(io.BytesIO(img_requests.content))
+            img_object = Image.open(io.BytesIO(img_response.content))
             img_rgb = img_object.convert('RGB')
-            # 以一定的质量保存图片，质量在main里面指定
             img_rgb.save(image_path, quality=quality)
         except Exception as e:
             logger('保存图片{}失败,放弃。'.format(image_name), str(e))
@@ -464,20 +451,15 @@ def download_image(main_site, quality):
             continue
 
         db_put(images_db, image, [1])
-        # 计算平均时间
         id_ += 1
         average_time = ((time.time() - start_time)
                         / id_)
-        logger('[average_time]:{:.2f} s'.format(average_time))
-
-        # 计算预计剩余时间
-        logger('[remaining_time]:{:.2f} hours'
-               .format((images_num - id_) * average_time / 3600))
+        logger('[average_time]:{:.2f} s\n[remaining_time]:{:.2f} hours'
+               .format(average_time, (images_num - id_) * average_time / 3600))
 
         time.sleep(2)
 
 
-# 保存mdict源文件内容
 def save_content():
     with open('Achievement.txt', 'w', encoding='utf-8') as f:
         is_first_run = True
@@ -485,9 +467,10 @@ def save_content():
             next_line = '\n'
         else:
             next_line = '\r\n'
+
         for title, content in contents_db.RangeIter():
             title = title.decode('utf-8')
-            content = json.loads(content.decode())['content']
+            content = json.loads(content.decode('utf-8'))['content']
             if is_first_run:
                 f.write(title + next_line + content + next_line + '</>')
                 is_first_run = False
@@ -495,15 +478,13 @@ def save_content():
                 f.write(next_line + title + next_line + content + next_line + '</>')
         for title, content in redirects_db.RangeIter():
             title = title.decode('utf-8')
-            content = json.loads(content.decode())['content']
+            content = json.loads(content.decode('utf-8'))['content']
             f.write(next_line + title + next_line + content + next_line + '</>')
 
 
 if __name__ == '__main__':
-    # 新建leveldb文件
-    titles_db, contents_db, redirects_db, images_db = new_db_file()
+    titles_db, contents_db, redirects_db, images_db = get_db_obj()
 
-    # 获得所有页面
     get_all_titles()
 
     # 处理页面并获取图片链接，存入数据库中
@@ -512,13 +493,11 @@ if __name__ == '__main__':
     del page_handler
     gc.collect()
 
-    # 保存mdict源文件内容
     save_content()
     del contents_db
     del redirects_db
     gc.collect()
 
-    # 下载图片
     if is_download_image:
         download_image(site, image_quality)
 
