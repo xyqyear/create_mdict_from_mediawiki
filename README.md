@@ -1,3 +1,6 @@
+`Deprecated`\
+`已废弃`
+
 # 从mediawiki创建mdict
 
 ## 依赖库:
